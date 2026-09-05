@@ -69,9 +69,11 @@ Robot types get their own encoder and decoder heads. What they share is one dyna
 
 ### 4.2 World model
 
-A deterministic residual model that predicts the delta between consecutive belief latents, implemented as a small MLP, pretrained offline with an MSE objective in latent space, then frozen. QWM's model is state based. Mine is latent based, because at search time the only input a robot has is its fused belief, so the model must accept a belief. Training data is the offline scripted buffer passed through the type specific encoders from week 3. Nothing exotic. It stays frozen so that any change in performance across the sweeps is attributable to search settings and not to a drifting model.
+A deterministic residual model that predicts the delta between consecutive belief latents, implemented as a small MLP, with an MSE objective in latent space. QWM's model is state based. Mine is latent based, because at search time the only input a robot has is its fused belief, so the model must accept a belief. Nothing exotic.
 
-The encoders freeze at the end of week 3, before the model is trained on their outputs. After that point online RLPD updates only the policy and critic heads. This keeps the input distribution of the world model fixed. A decoder head recovers payload and agent state from the latent, used in week 4 to report prediction error in state units.
+The model is pretrained in week 4 on the offline scripted buffer passed through the week 3 encoders. That is its initialization. From week 5 it keeps training online, alongside the encoders, on the same real transitions that RLPD samples. The dynamics loss has a stop gradient on the encoder, so the model chases the encoder and the encoder is shaped by the RL losses only. This keeps the model consistent with a representation that is still improving, and it keeps QWM's claim intact: nothing imagined ever becomes a training target, and the model trains on real latent transitions only. The model gets the same update to data ratio as the critic, and I track held out latent prediction error during training so that a lagging model is visible.
+
+At the end of week 5 training I snapshot the encoders, the policy, the critic, and the model. Every sweep runs on that snapshot, so any change in performance across the sweeps is attributable to search settings and not to a drifting model. A decoder head recovers payload and agent state from the latent, used to report prediction error in state units.
 
 Input is the fused belief plus the joint action vector across the team. Output is the next fused belief.
 
@@ -156,22 +158,22 @@ Deliverable: a learning curve that goes up.
 
 **Week 3, Oct 15 to 21. Beliefs.**
 Type specific encoders, attention fusion, one frame lag, forward correction, uncertainty heads. Still no search.
-Deliverable: decentralized belief RLPD baseline, plus belief prediction error. Encoders freeze here.
+Deliverable: decentralized belief RLPD baseline, plus belief prediction error.
 
 **Week 4, Oct 22 to 28. World model.**
-Pretrain the residual dynamics model on the offline buffer encoded by the frozen week 3 encoders. Validate prediction error against horizon, decoded to state units, before wiring it into anything.
+Pretrain the residual dynamics model on the offline buffer encoded by the week 3 encoders. Validate prediction error against horizon, decoded to state units, before wiring it into anything.
 Deliverable: model error curves, which also tell me a sane starting depth.
 
 **Week 5, Oct 29 to Nov 4. Tree search.**
-Implement search with imagined teammate actions, pruning, and value aggregation. Get H1.
-Deliverable: search versus no search, the core result.
+Add the online dynamics loss to the RLPD update. Implement search with imagined teammate actions, pruning, and value aggregation. Get H1. Snapshot the trained system at the end of the week.
+Deliverable: search versus no search, the core result, plus the snapshot that funds weeks 6 and 7.
 
 **Week 6, Nov 5 to 11. Headline sweeps.**
 Depth by staleness grid, discount sweep. No retraining, so this week is compute and plotting.
 Deliverable: the H2 figure.
 
 **Week 7, Nov 12 to 18. Remaining ablations.**
-Search with V, leader election variants, dropout, scale and composition transfer.
+Search with V, leader election variants, dropout, scale and composition transfer. If time allows, remove the stop gradient so the dynamics loss also shapes the encoder, and compare.
 
 **Week 8, Nov 19 to 25. Writeup and figures. Submit in the last week of November.**
 
