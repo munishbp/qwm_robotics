@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.python-version
+uv.lock.bak
+
+# Experiment outputs
+wandb/
+checkpoints/
+outputs/
+runs/
+data/
+*.pt
+*.pth
+*.npz
+*.h5
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
