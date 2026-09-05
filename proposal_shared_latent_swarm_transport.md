@@ -45,7 +45,7 @@ The team is heterogeneous. Pushers have traction but cannot grip. Grippers can l
 
 Partial observability is built in, not hoped for. Each robot senses a limited angular sector of the payload, sensing range is capped, and the payload body occludes views across it.
 
-**Negative control, week 1.** Train one robot with full state sensing and confirm it fails. If it succeeds, the task is too easy and I redesign before writing model code. This is the cheapest possible insurance against a dead project.
+**Controls, week 1.** Two checks before any model code. The scripted centralized controller with full state must succeed, which proves the task is solvable and makes the offline buffer worth collecting. A single robot with full state sensing must fail. That failure is by construction, because no single type can finish alone, so it confirms the task design and nothing more. The check that says the task is hard comes in week 2: centralized RLPD on the concatenated full state must learn, and decentralized partial sensing must learn slower or not at all. If those two curves match, the partial observability is not biting and I redesign the sensing. This is the cheapest possible insurance against a dead project.
 
 **Offline data.** QWM pretrains the world model on demonstration transitions and RLPD samples half its batches from an offline buffer. I have no human demos, so a scripted centralized force allocation controller with known payload inertia generates them. That controller was already going to be a baseline, so it does double duty.
 
@@ -69,9 +69,11 @@ Robot types get their own encoder and decoder heads. What they share is one dyna
 
 ### 4.2 World model
 
-Following QWM's state based setup, a deterministic residual model that predicts the state delta, implemented as a small MLP, pretrained offline on scripted demonstration transitions with an MSE objective, then frozen. Nothing exotic. It stays frozen so that any change in performance across the sweeps is attributable to search settings and not to a drifting model.
+A deterministic residual model that predicts the delta between consecutive belief latents, implemented as a small MLP, pretrained offline with an MSE objective in latent space, then frozen. QWM's model is state based. Mine is latent based, because at search time the only input a robot has is its fused belief, so the model must accept a belief. Training data is the offline scripted buffer passed through the type specific encoders from week 3. Nothing exotic. It stays frozen so that any change in performance across the sweeps is attributable to search settings and not to a drifting model.
 
-Input is the fused belief plus the joint action vector across the team. Output is the next payload and agent state.
+The encoders freeze at the end of week 3, before the model is trained on their outputs. After that point online RLPD updates only the policy and critic heads. This keeps the input distribution of the world model fixed. A decoder head recovers payload and agent state from the latent, used in week 4 to report prediction error in state units.
+
+Input is the fused belief plus the joint action vector across the team. Output is the next fused belief.
 
 ### 4.3 Multi agent tree search
 
@@ -80,7 +82,7 @@ This is the piece that is actually new.
 At each step, robot i:
 
 - samples N candidate actions for itself from its own policy
-- **imagines teammate actions** by running the shared policy on its own estimate of each teammate's belief, which is the stale t-1 latent rolled forward
+- **imagines teammate actions** by running the shared policy on its own estimate of each teammate's belief. At the root this estimate is the stale t-1 latent rolled forward one step. At every deeper node, robot i rolls each teammate estimate forward through the same world model with the imagined joint action, alongside its own belief. So a teammate estimate stays exactly as stale as it was at the root at every depth, and the staleness parameter in H2 means the same thing on every level of the tree
 - queries the world model on the resulting joint action to get predicted next states
 - recurses to depth D, pruning to J surviving paths using accumulated discounted Q values, exactly as QWM does
 - scores nodes with a combination of the direct critic estimate and the model rollout estimate, weighted by a tree search discount that damps deeper imagined value
@@ -154,10 +156,10 @@ Deliverable: a learning curve that goes up.
 
 **Week 3, Oct 15 to 21. Beliefs.**
 Type specific encoders, attention fusion, one frame lag, forward correction, uncertainty heads. Still no search.
-Deliverable: decentralized belief RLPD baseline, plus belief prediction error.
+Deliverable: decentralized belief RLPD baseline, plus belief prediction error. Encoders freeze here.
 
 **Week 4, Oct 22 to 28. World model.**
-Pretrain the residual dynamics model on the offline buffer. Validate prediction error against horizon before wiring it into anything.
+Pretrain the residual dynamics model on the offline buffer encoded by the frozen week 3 encoders. Validate prediction error against horizon, decoded to state units, before wiring it into anything.
 Deliverable: model error curves, which also tell me a sane starting depth.
 
 **Week 5, Oct 29 to Nov 4. Tree search.**
