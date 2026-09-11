@@ -9,6 +9,8 @@ that is already a frame old.
 The full proposal, hypotheses, method, baselines, and schedule are in
 [proposal_shared_latent_swarm_transport.md](proposal_shared_latent_swarm_transport.md).
 
+A primer on every concept the proposal depends on is in [concepts.md](concepts.md).
+
 ## Stack
 
 - mjlab (MuJoCo Warp physics)
