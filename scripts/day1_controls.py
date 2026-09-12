@@ -29,6 +29,7 @@ def main() -> None:
     p.add_argument("--ckpt", default="checkpoints/belief_best.pt")
     p.add_argument("--out", default="results/day1_controls.json")
     p.add_argument("--seed", type=int, default=1000)
+    p.add_argument("--only", default="", help="run one group only, for example F1")
     args = p.parse_args()
     dev = setup(args.seed)
     agent = Agent.load(args.ckpt, dev)
@@ -36,6 +37,8 @@ def main() -> None:
     rows = []
 
     def cell(name, policy, bcfg, scfg=None, envs=128, batches=3, **tags):
+        if args.only and tags.get("group") != args.only:
+            return
         t0 = time.time()
         res = evaluate(agent, lambda s: make_env(envs, s, False, "default", dev), bcfg, policy, scfg, batches, args.seed)
         res.update({"name": name, "sim": SIM, "envs": envs, "batches": batches, **tags})
