@@ -35,6 +35,11 @@ class RLPDConfig:
     # gradient to follow. A behavior cloning term on the offline half of every batch gives the
     # actor the scripted behavior while the critic learns the value the search needs.
     bc_weight: float = 1.0
+    # The reward is one terminal unit, so every true value lies in [0, 1]. Clamping the target to
+    # that range removes the offset that the minimum over noisy heads compounds through the
+    # bootstrap (about -0.56 times the head spread divided by 1 - gamma).
+    target_min: float = 0.0
+    target_max: float = 1.0
     obs_mode: str = "belief"  # belief or full
     full_dim: int = 0
 
@@ -94,6 +99,7 @@ class Agent:
                 v_next = v_next - self.alpha * logp_next
             not_done = (~d["term"]).float().unsqueeze(-1)
             y = d["r"].unsqueeze(-1) + cfg.gamma * not_done * v_next  # [B, K]
+            y = y.clamp(cfg.target_min, cfg.target_max)
         q = n.critic(d["b"], d["a"])  # [M, B, K]
         critic_loss = F.mse_loss(q, y.unsqueeze(0).expand_as(q))
         # The cloning term flows into the encoders and the fusion as well as the actor. It is a

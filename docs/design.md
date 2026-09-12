@@ -196,7 +196,10 @@ teammates, so team size can change at test time.
 - Actor: tanh Gaussian `pi(a | b)`, hidden 256, 2 layers.
 - Critic ensemble: `M = 10` heads `Q_m(b, a)`, hidden 256, 2 layers, LayerNorm after each hidden
   layer, implemented with batched weights so one forward pass evaluates all heads.
-- Target: minimum of two random heads, as in RLPD. Actor objective uses the mean over all heads.
+- Target: minimum of two random heads, as in RLPD, clamped to `[0, 1]`. The reward is one terminal
+  unit, so every true value lies in that range. Without the clamp the minimum over noisy heads
+  compounds through the bootstrap into a negative offset. Actor objective uses the mean over all
+  heads.
 - Discount `gamma = 0.99`. Adam with learning rate `3e-4` for every module. Fusion has 4 heads.
 - Uncertainty `unc_i = std_m Q_m(b_i, mu(b_i))`, the critic ensemble spread at the mean action.
 - Entropy temperature `alpha` is learned with target entropy `-3`, starting at `0.1`.
