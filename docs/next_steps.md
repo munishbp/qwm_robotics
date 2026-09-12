@@ -18,6 +18,7 @@ The cheapest experiments decide the most. In order of information per GPU minute
 | 5 | Leader mode with no fallback (skeptic F7) | Whether conclusion 3 holds without the confound | 8 |
 | 6 | The action signal to noise ratio r on both snapshots (algorithm 1) | Whether r predicts when search helps | 10 |
 | 7 | Re baseline H1 against the sampled policy and a random candidate (skeptic F1) | Whether the mjlab H1 survives the fair baseline | 23 |
+| 8 | Collect a 2D offline buffer at 65 percent success (more action noise), retrain, measure the critic span (reviewer 1) | Whether the flat 2D critic comes from near perfect demonstrations rather than the physics | 35 |
 
 One physics item is already done: the unloading force is now bounded at 80 percent of the
 payload weight (`swarm/env_mjlab.py`), which the physics draft below identified as the likely

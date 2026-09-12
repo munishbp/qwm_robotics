@@ -400,6 +400,14 @@ twice its own noise, the 2D critic by less than its noise, and the argmax picks 
 about 1.5 percent of the time on both. So the mjlab search selects with a weak but real signal,
 which is consistent with its small margin over a random sample (below).
 
+**A rival explanation the study did not separate.** The 2D offline buffer is 98.8 percent
+successful and the mjlab buffer 65.2 percent (`results/offline.json`, `runs/mjlab/results/offline.json`).
+The critic's target is the value of the recorded next action, so on a buffer where almost every
+action succeeds the critic has nothing to separate actions by, and on a buffer with failures it
+does. This explains the same span difference without any appeal to the physics. The two
+explanations are separable in about 35 GPU minutes: collect a 2D buffer with more action noise
+so its success rate falls to 65 percent, retrain, and measure the span again (`next_steps.md`).
+
 **Caveat.** The sampled policy scores 65.4 percent at lag 1 (section 13.7), within noise of the
 depth 2 search (67 to 70 across the sweeps). The mean action of this policy stalls in contact
 configurations that any perturbation breaks. So the fair decomposition of the 24.5 point gain is:
@@ -558,8 +566,10 @@ evaluation now seeds the torch RNG per batch, so a rerun gives identical cells a
    lag 1 (45.1 to 69.5) and the world model rollout accounts for 8 of them. On the 2D simulator the
    same code loses 9 points. The measured mediator is the critic's span across the policy's own
    candidates relative to its ensemble noise: 1.28 on mjlab, 0.66 on 2D. Both are single snapshots
-   and the two simulators differ in more than the physics, so this is one pair of observations
-   consistent with the mechanism, not a test of it; `next_steps.md` lists the controls.
+   and the two simulators differ in more than the physics (the 2D demonstration buffer is 98.8
+   percent successful against 65.2 on mjlab, which alone could make a SARSA critic flat), so this
+   is one pair of observations consistent with the mechanism, not a test of it; `next_steps.md`
+   lists the controls.
 
 2. **Stale teammate information degrades the search in the direction H2 and H3 predicted, in both
    simulators.** On mjlab the gain of search falls from +35 points at lag 0 to +24 at lag 4 while

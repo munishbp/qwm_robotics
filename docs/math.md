@@ -578,6 +578,9 @@ critic, which is why depth $-1$ goes in the same table. If H1 fails, H2 and H3 a
 boundary of QWM's mechanism under decentralization. The zero lag oracle baseline separates the two causes, because search that
 helps at $L=0$ and not at $L=1$ points at staleness and not at a broken model.
 
+
+**Protocol note.** The methodology (section 7) and `scripts/summarize.py` decide H1 on depth 2 against depth -1, the mean action with no search. Depth 0 against depth 2 is the ablation that isolates the world model and is reported beside it.
+
 ### 11.2 H2. The best depth shrinks as teammate information gets staler
 
 | Item | Statement |

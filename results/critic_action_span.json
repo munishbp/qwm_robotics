@@ -2,13 +2,20 @@
   "2d": {
     "q_span_across_candidates": 0.0033060189239525546,
     "ensemble_spread_at_mean": 0.00504591582963864,
+    "argmax_picks_mean_fraction": 0.013433160083756472,
+    "distance_of_chosen_to_mean": 0.3428150596717993,
+    "distance_of_average_candidate_to_mean": 0.27760756636659306,
     "ratio_r": 0.6551870930017699,
-    "argmax_picks_mean_fraction": 0.013433160083756472
+    "offline_buffer_success": 0.9880208333333333
   },
   "mjlab": {
-    "q_span_across_candidates": 0.006849165765258173,
-    "ensemble_spread_at_mean": 0.005350828927475959,
-    "ratio_r": 1.280019574180069,
-    "argmax_picks_mean_fraction": 0.015006510851283869
-  }
+    "q_span_across_candidates": 0.006790290924254805,
+    "ensemble_spread_at_mean": 0.005335068289423361,
+    "argmax_picks_mean_fraction": 0.016113281696258735,
+    "distance_of_chosen_to_mean": 0.6239525141815344,
+    "distance_of_average_candidate_to_mean": 0.5135770487288635,
+    "ratio_r": 1.2727655122459043,
+    "offline_buffer_success": 0.651678998292544
+  },
+  "protocol": "120 steps of 128 envs under the mean policy at lag 1, env seed 7, torch seed 0; nine root candidates = mean action plus eight policy samples; Q is the ensemble mean"
 }
