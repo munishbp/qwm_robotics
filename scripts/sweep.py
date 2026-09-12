@@ -48,6 +48,8 @@ def main() -> None:
     p.add_argument("--h3-depth", type=int, default=2)
     p.add_argument("--h4-depth", type=int, default=2)
     p.add_argument("--smoke", action="store_true")
+    # 128 envs per batch keeps the 76 cells of the sweeps under two hours.
+    p.set_defaults(envs=128)
     args = p.parse_args()
     if args.smoke:
         args.envs, args.batches = 16, 1

@@ -84,8 +84,9 @@ first episode of every env.
 
 ## 6. Evaluation protocol
 
-Every reported number is the mean over 3 batches of 256 envs, each batch from a different env
-seed (1000, 1001, 1002), with the standard error over batches. A batch runs 150 steps from reset
+Every reported number is the mean over 3 batches, each batch from a different env seed (1000,
+1001, 1002), with the standard error over batches. H1 uses 256 envs per batch. The sweeps use
+128 envs per batch, which keeps their 76 cells under two hours. A batch runs 150 steps from reset
 and scores the first episode of every env, so every env contributes exactly one episode. The
 mean action is used unless search is on.
 
