@@ -102,7 +102,9 @@ estimates makes off policy learning easier to break. Section 4 is the standard s
   exponential moving average of the live critic, usually with rate 0.005.
 - **Twin critics**: two independent Q networks. The TD target uses the minimum of the two. A single
   Q network overestimates, because the policy chases whatever `Q` overestimates, and the
-  overestimate gets baked into the target. Taking the minimum of two counters that.
+  overestimate gets baked into the target. Taking the minimum of two counters that. This project
+found the minimum too pessimistic over a 90 step horizon and uses the mean of two with a clamp
+instead (design.md section 6.4).
 - **Entropy bonus**: SAC adds a term to the objective that rewards the policy for staying random.
   The weight on that term is the **temperature** `α`, and SAC tunes it automatically to hit a target
   entropy. This keeps exploration alive under sparse reward and stops the policy from collapsing
@@ -460,7 +462,7 @@ H1 must hold for H2 and H3 to be testable. H4 is independent and is the stretch 
 | Bellman target, TD target | `r + γ Q(s', a')`, what the critic is trained toward |
 | Compounding error | Model error that grows with each imagined step |
 | Critic | The Q network |
-| Critic ensemble | Many Q networks; sample a pair, take the min, for tunable pessimism |
+| Critic ensemble | Many Q networks; the target uses a random pair. RLPD takes the minimum for pessimism; this project takes the mean and clamps the target instead (design.md 6.4) |
 | Decoder head | Maps a latent back to state units, for reporting error only |
 | Depth `D` | How many imagined steps the search looks ahead |
 | Discount `γ` | Per step factor on future reward, about 0.99 |

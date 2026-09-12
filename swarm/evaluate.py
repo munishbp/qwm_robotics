@@ -67,6 +67,10 @@ def evaluate(agent: Agent, make_env, belief_cfg: BeliefConfig, policy: str = "me
     """Mean and standard error over batches. `make_env(seed)` builds a fresh env."""
     rows = []
     for i in range(batches):
+        # The candidate samples of the search and the dropout draws use the torch RNG. Seeding it
+        # per batch makes a cell repeatable across scripts. Before this seed the same cell differed
+        # by up to four points between sweep groups (results.md section 13.9).
+        torch.manual_seed(seed + i)
         env = make_env(seed + i)
         rows.append(run_batch(agent, env, belief_cfg, policy, search_cfg, env.cfg.horizon))
     out = {}

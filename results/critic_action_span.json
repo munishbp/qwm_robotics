@@ -1,0 +1,14 @@
+{
+  "2d": {
+    "q_span_across_candidates": 0.0033060189239525546,
+    "ensemble_spread_at_mean": 0.00504591582963864,
+    "ratio_r": 0.6551870930017699,
+    "argmax_picks_mean_fraction": 0.013433160083756472
+  },
+  "mjlab": {
+    "q_span_across_candidates": 0.006849165765258173,
+    "ensemble_spread_at_mean": 0.005350828927475959,
+    "ratio_r": 1.280019574180069,
+    "argmax_picks_mean_fraction": 0.015006510851283869
+  }
+}

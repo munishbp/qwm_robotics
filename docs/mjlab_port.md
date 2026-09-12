@@ -63,7 +63,7 @@ adds about 15 percent to a run.
 ```
 uv pip install --python .venv/bin/python -e ".[mjlab]"
 .venv/bin/python -m pytest tests/test_env_mjlab.py -q
-SWARM_SIM=mjlab RUN_DIR=$PWD/runs/mjlab bash scripts/run_all.sh
+SWARM_SIM=mjlab RUN_DIR=$PWD/runs/mjlab bash scripts/run_all.sh 24000
 ```
 
 Memory safety: `swarm/compute.py` polls the driver for this process's GPU memory every three

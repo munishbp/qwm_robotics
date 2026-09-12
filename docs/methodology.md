@@ -33,7 +33,9 @@ every other constant is shared. See `mjlab_port.md` for the mapping and its meas
 
 Every script is deterministic given its seed except for CUDA kernel nondeterminism in scatter
 and attention kernels. Rerunning with the same seed reproduces the numbers to within evaluation
-noise, not bit for bit.
+noise, not bit for bit. The reported sweeps were run before the evaluation seeded the torch RNG
+per batch, so a cell that appears in several sweep groups differs between them by up to four
+points (results.md section 13.9 lists the repeats); the code now seeds per batch.
 
 ## 3. The task
 
@@ -74,7 +76,7 @@ takes about 2.5 hours on the 2D simulator and about 3.5 hours on mjlab, on the h
 | Batched env steps | 12,000 on 2D (3.07 million transitions), 24,000 on mjlab (6.14 million) |
 | Updates per batched env step | 4 |
 | Batch | 256 rows, half offline and half online, times 6 robots |
-| Critic ensemble | 10 heads, target is the minimum of 2 random heads |
+| Critic ensemble | 10 heads, target is the mean of 2 random heads clamped to [0, 1] (RLPD uses the minimum; see design.md 6.4) |
 | Discount, Polyak rate, learning rate | 0.99, 0.005, 3e-4 |
 | Target entropy | -3 |
 | Training staleness | lag 1 |

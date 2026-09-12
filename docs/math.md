@@ -39,7 +39,7 @@ leaves open. This document decides none of them.
 | $N$, $J$ | Candidates per node, beam width | 8, 4 |
 | $\beta$ | Tree search discount | 0.5 default, swept 0.0 to 1.0 |
 | $\nu_i$ | Scalar uncertainty of robot $i$ | equation (28) |
-| $A$, $h_x$, $h_y$, $R_c$ | Arena half size, payload half extents, comm radius | 5.0, 0.8, 0.4, 4.0 m |
+| $A$, $h_x$, $h_y$, $R_c$ | Arena half size, payload half extents, comm radius | 5.0, 0.8, 0.4, 6.0 m |
 
 ## 2. The task as a Dec POMDP
 
@@ -54,7 +54,7 @@ latch point in the payload frame at the moment the gripper latches.
 $$o_{k,t} = O_k(s_t) \in \mathbb{R}^{16}, \qquad c_{ij,t} = \mathbb{1}\big[\, i \ne j,\ \|x_{i,t} - x_{j,t}\| < R_c,\ \neg\,\text{occluded}(i,j,s_t)\,\big] \tag{2}$$
 
 The observation map is deterministic and lossy, and design section 3.5 lists its 16 fields. The payload enters the observation
-only inside the sensing range of the type, 2.0 m for a pusher and a gripper and 8.0 m for a scout, and $c_{ij,t}$ decides which
+only inside the sensing range of the type, 3.0 m for a pusher and a gripper and 15.0 m for a scout, and $c_{ij,t}$ decides which
 messages robot $i$ receives.
 
 $$R(s_t, \mathbf{a}_t) = \mathbb{1}\big[\|(p_x,p_y) - (g_x,g_y)\| < 0.3 \ \wedge\ |\mathrm{wrap}(p_\theta - g_\theta)| < 0.2\big], \qquad \max_\pi\ \mathbb{E}\Big[\textstyle\sum_t \gamma^t R(s_t, \mathbf{a}_t)\Big] \tag{3}$$
@@ -68,7 +68,7 @@ design sets $\gamma = 0.99$.
 Design section 3.3 fixes a quasi static model with a Coulomb style threshold. Write $n_\ell$ for the number of latched
 grippers, $\Pi(x)$ for the closest payload boundary point to $x$, and $\hat{n}(x)$ for the inward unit normal there.
 
-$$F_k = \begin{cases} u_k F_p \hat{n}(x_k) & \tau_k = \text{pusher},\ \|x_k - \Pi(x_k)\| \le d_c,\ u_k > 0 \\ F_g\,\mathrm{clip}(v_{x,k}, v_{y,k}) & \tau_k = \text{gripper, latched} \\ 0 & \text{otherwise}\end{cases} \qquad F_p = 1.0,\ F_g = 0.3,\ d_c = 0.25 \tag{4}$$
+$$F_k = \begin{cases} u_k F_p \hat{n}(x_k) & \tau_k = \text{pusher},\ \|x_k - \Pi(x_k)\| \le d_c,\ u_k > 0 \\ F_g\,\mathrm{clip}(v_{x,k}, v_{y,k}) & \tau_k = \text{gripper, latched} \\ 0 & \text{otherwise}\end{cases} \qquad F_p = 1.0,\ F_g = 0.3,\ d_c = 0.45 \tag{4}$$
 
 A pusher cannot choose a direction, because it pushes along the inward normal. A latched gripper chooses any direction but is
 weak, with $\|F_k\| \le F_g\sqrt{2} \approx 0.424$ N.
@@ -119,7 +119,7 @@ applies no force. This is the week 1 negative control, and it holds by construct
 $$v = \frac{3.6 - 1.5}{2.0} = 1.05\ \text{m/s}, \qquad |\tau_{\text{net}}| \le 3(1.0 \times 0.5 h_x) + 2\big(F_g\sqrt{h_x^2 + h_y^2}\big) = 1.737, \qquad \omega = \frac{1.737 - 0.6}{2.0} = 0.568\ \text{rad/s} \tag{10}$$
 
 Translation crosses the 2.5 m to 4.0 m gap in 24 to 39 of the 150 steps, so it has a wide margin. Rotation is tighter, and the
-worst case really occurs: design section 3.1 samples the goal orientation up to 90 degrees from the start orientation, while
+worst case occurred in the first task version, which sampled the goal orientation up to 90 degrees from the start; the final task samples up to 45 degrees and goals 1.5 to 3.0 m away (design section 3.1), while
 two pushers alone give $\omega = 0.1$ rad/s and need about 157 steps for that angle, which exceeds the 150 step episode. The
 team must commit most of its pushers to torque when the angle error is large, and that is why design section 4 makes the
 scripted controller spread the pushers along the face near the goal.
