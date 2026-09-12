@@ -40,6 +40,11 @@ class RLPDConfig:
     # bootstrap (about -0.56 times the head spread divided by 1 - gamma).
     target_min: float = 0.0
     target_max: float = 1.0
+    # The bootstrap uses the mean action. The sampled policy keeps a large standard deviation
+    # because alpha decays to zero and a critic that is flat in the action never shrinks it, so
+    # a sampled bootstrap values a noisy policy that fails, and that value decays by about 0.8
+    # per step away from the goal. The search and the evaluation act with the mean policy.
+    target_policy: str = "mean"  # mean or sample
     obs_mode: str = "belief"  # belief or full
     full_dim: int = 0
 
@@ -92,6 +97,8 @@ class Agent:
         # Critic. Target uses the minimum of two random heads, as in RLPD, and the entropy bonus.
         with torch.no_grad():
             a_next, logp_next = n.actor.sample(d["b_next"])
+            if cfg.target_policy == "mean":
+                a_next = n.actor.mean(d["b_next"])
             q_t = n.critic_target(d["b_next"], a_next)
             pair = torch.randperm(cfg.num_critics, device=self.device)[:2]
             v_next = q_t[pair].min(0).values

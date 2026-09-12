@@ -208,6 +208,10 @@ teammates, so team size can change at test time.
 - Entropy temperature `alpha` is learned with target entropy `-3`, starting at `0.1`.
 - The critic target does not back up the entropy term (RLPD `backup_entropy = False`). Under a
   sparse terminal reward the entropy stream would reward a long episode and the actor would stall.
+- The bootstrap action is the policy mean, not a sample. Alpha decays to zero and a critic that is
+  flat in the action never shrinks the policy standard deviation, so a sampled bootstrap values a
+  noisy policy that fails, and the value decayed by about 0.8 per step away from the goal. The
+  search and the evaluation act with the mean policy, so the critic values that policy.
 
 ### 6.5 World model: `swarm/world_model.py`
 
