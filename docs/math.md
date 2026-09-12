@@ -134,7 +134,7 @@ $$J(\pi) = \mathbb{E}_\pi\Big[\textstyle\sum_t \gamma^t\big(r_t + \alpha\,\mathc
 The entropy term pays the policy to stay random. Under a sparse reward the policy gets no gradient from the reward until it
 succeeds once, so without this term it collapses early and never finds the goal.
 
-$$\mathcal{T}^\pi Q(b,a) = r + \gamma\,\mathbb{E}_{b', a' \sim \pi}\big[Q(b',a') - \alpha \log \pi(a' \mid b')\big], \qquad y = \mathrm{clip}\Big(r + \gamma\,(1 - \text{terminated})\,\tilde{Q}_{\bar\phi}(b',a'),\ 0,\ 1\Big) \tag{12}$$
+$$\mathcal{T}^\pi Q(b,a) = r + \gamma\,\mathbb{E}_{b', a' \sim \pi}\big[Q(b',a') - \alpha \log \pi(a' \mid b')\big], \qquad y = \mathrm{clip}\Big(r + \gamma\,(1 - \text{terminated})\,\tilde{Q}_{\bar\phi}\big(b',\ \mu^{\tanh}_\theta(b')\big),\ 0,\ 1\Big) \tag{12}$$
 
 The left side is the soft Bellman operator of SAC. The right side is the target this project uses, and it leaves the
 entropy term out. This is RLPD's `backup_entropy = False` setting, and it exists for a sparse terminal reward: the reward is
@@ -152,6 +152,16 @@ independent draws sits $\sigma/\sqrt{\pi}$ below their own mean, and the bootstr
 $0.56\,\sigma/(1-\gamma)$; at the spread of 0.005 the training run showed, this predicts $-0.28$, against the $Q$ near $-0.3$
 the run reached. The clip does not move the fixed point when the heads agree, because the minimum then equals the value and
 every true value already lies inside the range.
+
+The bootstrap action is the policy mean $\mu^{\tanh}_\theta(b') = \tanh(\mu_\theta(b'))$, not a sample; this document writes
+$\mu_\theta(b)$ for that same mean action wherever a deterministic action is meant. Two facts force the change. The
+temperature decays to about zero within 3,000 updates, because the target entropy $-3$ sits far below the entropy the cloned
+policy of equation (15) already has, and a critic that is flat in the action gives $\sigma_\theta$ no gradient, so the
+standard deviation stays near 0.3 and the sampled policy fails most episodes. A sampled bootstrap then values that noisy
+policy: the measured value decayed by about 0.8 per step away from the goal, reading 0.65 at the terminal step and 0.52, 0.42,
+0.34 at one, two, and three steps before it, and 0.03 at twenty steps, where $\gamma = 0.99$ alone would give 0.99 per step.
+The search of section 9 and the evaluation both act with the mean policy, so the critic now values the policy that acts. This
+makes the target TD3 like, with a deterministic next action, while the actor loss of equation (15) keeps the SAC form.
 
 $$\mathcal{L}_Q(\phi) = \frac{1}{M}\sum_{m=1}^{M}\mathbb{E}_{\mathcal{D}}\Big[\big(Q_{\phi,m}(b,a) - y\big)^2\Big] \tag{13}$$
 
