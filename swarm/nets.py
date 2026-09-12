@@ -220,6 +220,9 @@ class Nets(nn.Module):
             p.requires_grad_(False)
         self.wm = WorldModel()
         self.dec = Decoder()
+        # The belief decoder shapes the fused belief: it must carry the payload pose, the latch
+        # flag, and the visible flag. This is privileged state at training time only.
+        self.dec_b = Decoder()
         self.log_alpha = nn.Parameter(torch.zeros(()))
 
     @torch.no_grad()

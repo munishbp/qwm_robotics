@@ -234,14 +234,21 @@ One update:
 1. Sample `B / 2` rows from the offline buffer and `B / 2` from the online buffer, `B = 256`.
 2. Build beliefs for all `K` robots at `t` and `t + 1` with the current encoders, the message
    procedure of 6.2 at the training staleness `L_train = 1`, and the fusion of 6.3.
-3. Critic loss on `B * K` per robot transitions with the shared team reward.
+3. Critic loss on `B * K` per robot transitions with the shared team reward, on a detached
+   belief. The critic never shapes the representation. A bootstrapped loss that shapes the fusion
+   has a degenerate fixed point where the belief goes constant, and every run that allowed it
+   collapsed between steps 3,500 and 5,000 (the belief spread across states halved and the
+   terminal rows could no longer be fit).
+3b. Representation loss into the encoders and the fusion: the cloning term of step 4 plus a
+   decoder from the belief to the decoder target (payload pose relative to the robot, latch flag,
+   visible flag), weight `1.0`. This is privileged state at training time only. It is what forces
+   the fusion to recover the payload pose from a teammate's message.
 4. Actor loss and temperature loss, plus a behavior cloning term on the offline half of the batch,
    `bc_weight = 1.0` times the squared error between the policy mean and the recorded action. This
    is a deviation from RLPD. Under the sparse reward the critic stays flat in the action for far
    longer than the budget allows, and without the term the actor stayed near zero velocity. The
-   cloning gradient also flows into the encoders and the fusion. It is a supervised signal, and
-   it is what teaches the fusion to read the payload position out of a teammate's message when
-   the own sensor cannot see it. The SAC actor term runs on a detached belief.
+   cloning gradient also flows into the encoders and the fusion (step 3b). The SAC actor term
+   runs on a detached belief.
 5. World model loss and decoder loss with stop gradient on the latents.
 6. Polyak update of the target critic with `tau = 0.005`.
 
