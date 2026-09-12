@@ -188,6 +188,15 @@ def simple(d: dict, key: str, title: str) -> None:
     print()
 
 
+def ablations(d: dict) -> None:
+    print("### Ablations on the snapshot (128 envs, 3 batches)\n")
+    print("| Setting | Success (%) | Length on success |")
+    print("|---|---|---|")
+    for r in d["rows"]:
+        print(f"| {r['name']} | {pct(r['success'], r['success_se'])} | {r['length_on_success']:.1f} |")
+    print()
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--results", default="results")
@@ -209,6 +218,8 @@ def main() -> None:
         simple(d, "dropout", "Robustness: message dropout at lag 1")
     if (d := load(os.path.join(R, "transfer.json"))):
         simple(d, "team", "Transfer: team composition at lag 1 (trained on the default team)")
+    if (d := load(os.path.join(R, "ablations.json"))):
+        ablations(d)
 
 
 if __name__ == "__main__":
