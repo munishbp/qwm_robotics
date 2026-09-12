@@ -35,3 +35,5 @@ results/episodes.json
 runs/*_smoke/
 runs/*/run_all.*
 runs/*/*.pid
+runs/*/*.log
+results/day1.log
