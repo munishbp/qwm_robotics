@@ -30,7 +30,7 @@ leaves open. This document decides none of them.
 | $r_t$ | Shared team reward | 1 on success, else 0 |
 | $\gamma$ | Reward discount | 0.99 |
 | $\alpha$, $\bar{\mathcal{H}}$ | Entropy temperature and target entropy | $\alpha$ learned, $\bar{\mathcal{H}} = -3$ |
-| $\theta, \phi, \bar\phi, \psi$ | Actor, critic, target critic, world model parameters | Polyak rate $\rho = 0.005$ |
+| $\theta, \phi, \bar\phi, \psi$ | Actor; critic; target copies of the critic and the representation; world model | Polyak rate $\rho = 0.005$ |
 | $M$ | Critic ensemble size | 10 |
 | $\lambda_{\text{bc}}$ | Behavior cloning weight on the offline half | 1.0 |
 | $B$, $G$ | Batch rows, updates per batched env step | 256, 4 |
@@ -151,6 +151,15 @@ that equation (19) averages two heads rather than taking their minimum: a target
 can pay, so the loop in which the actor chases an overestimate and the overestimate returns as a target cannot run away. It
 does not move the fixed point, because every true value already lies inside the range.
 
+The bootstrap belief $b'$ comes from target copies of the encoders and the fusion, not from the online ones.
+
+$$b' = \mathrm{fuse}_{\bar\phi}\Big(\mathrm{enc}_{\bar\phi}(o_{t+1}),\ \{(\hat{z}_j, L_j, \tau_j)\}\Big), \qquad \bar\phi \leftarrow (1 - \rho)\,\bar\phi + \rho\,\phi, \qquad \rho = 0.005 \tag{12b}$$
+
+One Polyak rule moves the target critic and the target representation together. The critic loss of equation (13) shapes the
+encoders and the fusion, so without the target copy the belief on both sides of the backup would move with every update and
+the bootstrap would chase itself. This is the same reason the critic has a target copy at all, applied to the input of the
+critic rather than to its weights.
+
 The bootstrap action is the action the buffer recorded next, $a_{t+1}$ from the same episode, which makes the target SARSA
 style on the behavior data. The fallback $\mu^{\tanh}_\theta(b') = \tanh(\mu_\theta(b'))$ covers only the two rows where no
 successor exists: the newest row of the online buffer, and the last row of a truncated episode. This document writes
@@ -170,11 +179,11 @@ behavior policy of the two buffers, and that policy succeeds 99 percent of the t
 estimates is a useful one. The search of section 9 reads that value to rank candidate actions, and the actor of equation (15)
 is still improved by it, because policy improvement over a behavior policy is what the first term of equation (15) performs.
 
-$$\mathcal{L}_Q(\phi) = \frac{1}{M}\sum_{m=1}^{M}\mathbb{E}_{\mathcal{D}}\Big[\big(Q_{\phi,m}(\mathrm{sg}(b),\, a) - y\big)^2\Big] \tag{13}$$
+$$\mathcal{L}_Q(\phi) = \frac{1}{M}\sum_{m=1}^{M}\mathbb{E}_{\mathcal{D}}\Big[\big(Q_{\phi,m}(b,\, a) - y\big)^2\Big] \tag{13}$$
 
 Every head trains on the same target and differs only by its initialization. Their disagreement therefore measures how much
-the data constrains the value at that input, which is what equation (28) needs. The belief carries a stop gradient, so the
-critic reads the representation and never shapes it, for the reason equation (22b) gives.
+the data constrains the value at that input, which is what equation (28) needs. The belief is not detached here, so this loss
+also shapes the encoders and the fusion; equation (22b) says what else does, and equation (12b) says what keeps it stable.
 
 $$a_\theta(b,\xi) = \tanh(u),\ \ u = \mu_\theta(b) + \sigma_\theta(b)\odot\xi,\ \ \xi \sim \mathcal{N}(0,I); \qquad \log \pi(a \mid b) = \log \mathcal{N}(u; \mu_\theta, \sigma_\theta) - \sum_{n=1}^{3}\log\big(1 - \tanh^2 u_n\big) \tag{14}$$
 
@@ -246,7 +255,7 @@ $$\text{rows sampled per collected row} = \frac{G \cdot B}{E} = \frac{4 \times 2
 RLPD quotes an update to data ratio of 20 for a single environment, which is not comparable here because one batched step
 collects 256 transitions at once. Equation (20) is the comparable quantity, and the world model receives the same update count
 as the critic. The design fixes Adam with learning rate $3 \times 10^{-4}$ for every module, $B = 256$ rows per update, and
-the Polyak rate $\rho = 0.005$ on the target critic of equation (12).
+the Polyak rate $\rho = 0.005$ of equation (12b), which moves the target critic and the target representation together.
 
 ## 5. Latent world model
 
@@ -264,8 +273,8 @@ perfectly predictable and useless for control. The decoder target $y_{\text{stat
 relative to the robot plus the latch and visible flags, and it carries a stop gradient too, so it reads the latent and never
 shapes it.
 
-**What shapes the representation.** The type encoders and the attention fusion are trained by supervised losses only. There
-are two: the cloning term of equation (15), which does not detach $b$, and a decoder from the belief to the same target.
+**What shapes the representation.** Three losses reach the type encoders and the attention fusion: the critic loss of
+equation (13), the cloning term of equation (15), and a decoder from the belief to the same target as equation (22).
 
 $$\mathcal{L}_{\text{decb}} = \lambda_{\text{decb}}\,\mathbb{E}_{\mathcal{D}}\Big[\big\|\mathrm{dec}_b(b) - s_{\text{dec}}\big\|_2^2\Big], \quad s_{\text{dec}} = \big(\delta x/A,\ \delta y/A,\ \cos\theta_{\text{rel}},\ \sin\theta_{\text{rel}},\ \ell,\ \mathrm{vis}\big) \in \mathbb{R}^6, \quad \lambda_{\text{decb}} = 1.0 \tag{22b}$$
 
@@ -273,15 +282,18 @@ Note the two decoders. The $\mathrm{dec}$ of equation (22) reads $\mathrm{sg}(z)
 $\mathrm{dec}_b$ reads $b$ undetached and shapes it. The target $s_{\text{dec}}$ is privileged state, available at training
 time only and never at a decision.
 
-A bootstrapped loss that shapes the fusion has a degenerate fixed point where the belief goes constant, because a constant belief makes every target equal and the critic then fits that constant with zero error. Every run
-that let the critic shape the fusion collapsed between steps 3,500 and 5,000, with the belief spread across states halving
-from 1.08 to 0.45 while the raw encoding spread held at 0.07, and the terminal rows fitting 0.23 against a target of 1. The
-belief decoder anchors the belief to the payload pose, which is exactly the quantity the fusion must recover from a teammate's
-message when the own sensor cannot see the payload.
+Two anchors and a target copy are what make a critic gradient into the representation safe, and each one answers a measured
+failure. A fully detached critic could not fit the terminal rows at all, reading 0.12 against a target of 1 after 12,000
+updates, so the value signal has to reach the representation. The collapse of the earlier runs, where the belief spread across
+states halved from 1.08 to 0.45 between steps 3,500 and 5,000 while the raw encoding spread held at 0.07, came from the target
+belief drifting together with the online belief, which is exactly what the target copy of equation (12b) removes. The two
+anchors then tie the belief to the recorded action and to the payload pose, so the bootstrapped fixed point cannot be a
+constant: a constant belief would make every target equal and cost the critic nothing, but it would cost both anchors
+everything.
 
-The proposal said the RL losses shape the encoder. This is a deliberate deviation from it, and the failure above is the
-evidence. It is the same degenerate fixed point the stop gradient of equation (22) already guards against on the world model
-side, reached by a different loss.
+The belief decoder carries the larger share of that job, because the payload pose is exactly the quantity the fusion must
+recover from a teammate's message when the own sensor cannot see the payload. This arrangement restores what the proposal
+asked for, RL losses that shape the encoder, and adds the target copy of equation (12b) that the proposal did not name.
 
 **Why the stop gradient keeps QWM's claim intact.** The right hand side of the first loss is $e_{t+1}$, the encoding of a
 **real** observation from the buffer, so no imagined quantity appears in any loss. Section 9 uses the model at decision time
@@ -326,7 +338,7 @@ discount an old estimate instead of the designer fixing a weight by hand. The un
 and serves only the election of equation (28), because the offline buffer has no critic, so a stored uncertainty would mark
 the data source inside every batch and the fusion layer could read it. This is scaled dot product attention from Vaswani et
 al. (2017) over a set of at most 16 vectors, the query comes from the own encoding only, and the design uses 4 heads. The
-gradient that trains this layer comes from equations (15) and (22b) alone, never from the critic.
+gradient that trains this layer comes from equations (13), (15), and (22b).
 
 $$b_i = \mathrm{att}_i + \mathrm{MLP}(\mathrm{att}_i) \tag{27}$$
 
