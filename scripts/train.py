@@ -47,8 +47,8 @@ def main() -> None:
         args.out = args.out + "_smoke"
     dev = setup(args.seed)
     env = make_env(args.envs, args.seed, training=True, device=dev)
-    types = torch.tensor(env.types, device=dev)
-    fd = full_dim(env.K)
+    types = env.types
+    fd = full_dim(env.num_robots)
     cfg = RLPDConfig(utd=args.utd, obs_mode=args.obs, full_dim=fd)
     agent = Agent(types, cfg, dev)
     online = Buffer(env.num_envs, args.steps + 1, types, dev, fd)

@@ -40,9 +40,9 @@ def record(agent: Agent, env, setting: dict, per_setting: int) -> list[dict]:
     runner = Runner(env, buf, BeliefConfig(lag=setting["lag"]), agent.nets, agent.cfg.obs_mode)
     scfg = SearchConfig(depth=setting["depth"]) if setting["depth"] >= 0 else None
     policy = "search" if scfg else "mean"
-    T = env.cfg.episode_length
+    T = env.cfg.horizon
     st = env.state()
-    eps = [{"label": setting["label"], "setting": setting, "types": [int(x) for x in env.types],
+    eps = [{"label": setting["label"], "setting": setting, "types": env.types.tolist(),
             "goal": st["goal"][e].tolist(), "payload": [st["payload"][e].tolist()],
             "robots": [st["robot_pos"][e].tolist()], "latched": [st["latched"][e].int().tolist()],
             "ages": [], "actions": [], "success": False, "length": T} for e in range(per_setting)]
@@ -90,8 +90,8 @@ def main() -> None:
         print(setting["label"], [e["success"] for e in episodes[-args.per_setting:]])
     cfg = env.cfg
     data = {"arena_half": cfg.arena_half, "payload_half": [cfg.payload_hx, cfg.payload_hy],
-            "robot_radius": cfg.robot_radius, "dt": cfg.dt, "goal_pos_tol": cfg.goal_pos_tol,
-            "goal_angle_tol": cfg.goal_angle_tol, "episodes": episodes}
+            "robot_radius": cfg.robot_radius, "dt": cfg.dt, "goal_pos_tol": cfg.pos_tol,
+            "goal_angle_tol": cfg.ang_tol, "episodes": episodes}
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w") as f:
         json.dump(data, f)

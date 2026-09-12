@@ -5,9 +5,13 @@ payload frame. It fills the offline buffer, so it has to succeed often. It does 
 optimal.
 
 The plan has two phases. The transport phase puts every pusher on the face opposite the goal and
-shifts them along that face to turn the payload while it travels. The turning phase starts near the
-goal and splits the pushers onto the two long faces, where they form a force couple. A couple turns
-the payload and does not move it off the goal.
+shifts them along that face, which drives the payload toward the goal and turns it on the way. The
+turning phase starts near the goal and moves the first two pushers onto the two long faces, where
+they form a force couple. A couple turns the payload and applies no net force, so the payload holds
+its place while the last of the angle error goes away.
+
+The shift along the back face stays well inside the face. At a corner the contact normal points
+along the diagonal, and a push there turns the payload the wrong way.
 """
 
 from __future__ import annotations
@@ -15,22 +19,29 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from swarm.env import Contact, TransportEnv, rect_contact, to_local, to_world_vec, wrap_angle
+from swarm.env import (
+    TYPE_SCOUT,
+    Contact,
+    TransportEnv,
+    rect_contact,
+    to_local,
+    to_world_vec,
+    wrap_angle,
+)
 
 # Gains. The env clips the action, so a move gain is a normalized command per meter of error.
 MOVE_GAIN = 5.0
 ANGLE_GAIN = 4.0
-OFFSET_FRAC = 0.9
+OFFSET_FRAC = 0.4
 PRESS = 0.05
 RING_RADIUS = 1.5
-ALIGN_TOL = 0.4
 ORBIT_STEP = 0.9
-PUSH_SCALE = 0.5
+PUSH_SCALE = 0.3
 GRIP_ROT_GAIN = 3.0
 SCOUT_STANDOFF = 2.0
-ENDGAME_DIST = 0.6
+ENDGAME_DIST = 1.0
 ENDGAME_ANGLE = 0.12
-COUPLE_FRAC = 0.85
+COUPLE_FRAC = 0.9
 
 
 class ScriptedController:
@@ -65,10 +76,10 @@ class ScriptedController:
         torque_sign = torch.where(use_x, face, -face)
         shift = torque_sign * (ANGLE_GAIN * angle_error).clamp(-1.0, 1.0) * tan_half * OFFSET_FRAC
 
-        target, normal, busy = self._targets(use_x, face, shift, turn, turning)
+        target, normal, couple, idle = self._targets(use_x, face, shift, turn, turning)
         contact = rect_contact(pos, payload, cfg.payload_hx, cfg.payload_hy)
-        command = self._approach(pos, payload, target, normal, busy)
-        control = self._effort(contact, target, normal, busy, latched, distance, turning)
+        command = self._approach(pos, payload, target, normal) * (~idle).unsqueeze(-1)
+        control = self._effort(contact, target, normal, couple, idle, latched, distance)
         command = self._gripper_force(
             command, pos, payload, latched, heading, distance, angle_error, turn, turning
         )
@@ -81,8 +92,8 @@ class ScriptedController:
 
     def _targets(
         self, use_x: Tensor, face: Tensor, shift: Tensor, turn: Tensor, turning: Tensor
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """Return the target point, the face normal, and the busy flag for every robot."""
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Return the target point, the face normal, the couple flag, and the idle flag."""
         env = self.env
         cfg = env.cfg
         shape = (env.num_envs, env.num_robots)
@@ -91,6 +102,7 @@ class ScriptedController:
         gripper = env.is_gripper[None, :].expand(shape)
         flat = use_x[:, None].expand(shape)
         zero = torch.zeros(shape, device=env.device)
+        side = torch.where(rank == 0, 1.0, -1.0)
 
         back_point = torch.stack(
             (
@@ -109,7 +121,6 @@ class ScriptedController:
 
         # The couple pushes the two long faces in opposite directions, so the net force is zero.
         arm = turn[:, None].expand(shape) * COUPLE_FRAC * cfg.payload_hx
-        side = torch.where(rank == 0, 1.0, -1.0)
         couple_point = torch.stack((-arm * side, side * cfg.payload_hy), dim=-1)
         couple_normal = torch.stack((zero, side), dim=-1)
 
@@ -125,23 +136,21 @@ class ScriptedController:
             (torch.where(flat, zero, side), torch.where(flat, side, zero)), dim=-1
         )
 
-        couple = (turning[:, None] & pusher & (rank < 2)).unsqueeze(-1)
-        target = torch.where(couple, couple_point, back_point)
-        normal = torch.where(couple, couple_normal, back_normal)
+        couple = turning[:, None] & pusher & (rank < 2)
+        target = torch.where(couple.unsqueeze(-1), couple_point, back_point)
+        normal = torch.where(couple.unsqueeze(-1), couple_normal, back_normal)
         target = torch.where(gripper.unsqueeze(-1), grip_point, target)
         normal = torch.where(gripper.unsqueeze(-1), grip_normal, normal)
 
-        spare = turning[:, None] & pusher & (rank >= 2)
-        return target, normal, (pusher | gripper) & ~spare
+        # A spare pusher waits out the turn. Its push would move the payload off the goal.
+        return target, normal, couple, turning[:, None] & pusher & (rank >= 2)
 
-    def _approach(
-        self, pos: Tensor, payload: Tensor, target: Tensor, normal: Tensor, busy: Tensor
-    ) -> Tensor:
+    def _approach(self, pos: Tensor, payload: Tensor, target: Tensor, normal: Tensor) -> Tensor:
         """Drive every robot to its face. A robot behind the payload orbits it first.
 
         The orbit keeps a pusher off the wrong faces on the way in. A pusher never pushes the
-        payload sideways while it travels, because it also holds its effort at zero until it
-        stands on the face that its job names.
+        payload sideways while it travels, because it also holds its effort at zero until it stands
+        on the face that its job names.
         """
         local = to_local(pos, payload)
         radius = torch.linalg.vector_norm(local, dim=-1, keepdim=True).clamp(min=1e-6)
@@ -157,35 +166,38 @@ class ScriptedController:
             )
             * RING_RADIUS
         )
-        aligned = (bearing.abs() < ALIGN_TOL).unsqueeze(-1)
-        goto = torch.where(aligned, target + normal * PRESS, orbit)
+        # Beyond the face plane the rectangle lies entirely on the far side, so a straight run to
+        # the target point cannot cross it. Anywhere else the robot orbits until it gets there.
+        clear = (((local - target) * normal).sum(dim=-1) >= 0.0).unsqueeze(-1)
+        goto = torch.where(clear, target + normal * PRESS, orbit)
         world = payload[:, None, :2] + to_world_vec(goto, payload)
-        return _unit_command(world - pos) * busy.unsqueeze(-1)
+        return _unit_command(world - pos)
 
     def _effort(
         self,
         contact: Contact,
         target: Tensor,
         normal: Tensor,
-        busy: Tensor,
+        couple: Tensor,
+        idle: Tensor,
         latched: Tensor,
         distance: Tensor,
-        turning: Tensor,
     ) -> Tensor:
         """Return the third action element for every robot.
 
-        A pusher pushes only from the face that its job names, so a stray touch on the way in
-        applies no force. A gripper holds its latch for the whole episode, because a release raises
-        the friction threshold and helps nobody.
+        A pusher pushes only while it touches the face that its job names, so a stray touch on the
+        way in applies no force. A gripper holds its latch for the whole episode, because a release
+        raises the friction threshold and helps nobody.
         """
         env = self.env
         cfg = env.cfg
         drift = ((contact.local - target) * normal.abs()).sum(dim=-1).abs()
         touching = contact.sdist <= cfg.contact_dist
         on_face = (drift < 1e-3) & touching
-        near = (distance / PUSH_SCALE).clamp(0.0, 1.0)[:, None]
-        effort = torch.where(turning[:, None], torch.ones_like(near), near)
-        push = effort * (on_face & busy & env.is_pusher[None, :]).to(contact.sdist.dtype)
+
+        near = (distance / PUSH_SCALE).clamp(0.0, 1.0)[:, None].expand_as(drift)
+        effort = torch.where(couple, torch.ones_like(near), near)
+        push = effort * (on_face & ~idle & env.is_pusher[None, :]).to(contact.sdist.dtype)
         grip = (latched | touching).to(contact.sdist.dtype)
         return torch.where(env.is_gripper[None, :], grip, push)
 
@@ -204,7 +216,8 @@ class ScriptedController:
         """Replace the move command of a latched gripper with the force that it applies.
 
         A latched gripper sits at its latch point, so its first two action elements are a force
-        direction and not a velocity.
+        direction and not a velocity. During the turn the force is pure tangent, which adds torque
+        and leaves the payload where it stands.
         """
         arm = pos - payload[:, None, :2]
         span = torch.linalg.vector_norm(arm, dim=-1, keepdim=True).clamp(min=1e-6)
@@ -222,7 +235,7 @@ class ScriptedController:
     ) -> Tensor:
         """Keep the scout on the goal side of the payload. It applies no force."""
         world = payload[:, None, :2] + heading[:, None, :] * SCOUT_STANDOFF
-        scout = (self.env.types == 2)[None, :, None]
+        scout = (self.env.types == TYPE_SCOUT)[None, :, None]
         return torch.where(scout, _unit_command(world - pos), command)
 
 

@@ -47,7 +47,8 @@ class EnvConfig:
     dt: float = 0.1
     horizon: int = 150
     v_max: float = 1.5
-    contact_dist: float = 0.25
+    # Measured from the robot center. The disc edge is then within 0.25 m of the boundary.
+    contact_dist: float = 0.45
     push_force: float = 1.0
     grip_force: float = 0.3
     friction_f0: float = 3.5
@@ -59,7 +60,7 @@ class EnvConfig:
     pos_tol: float = 0.3
     ang_tol: float = 0.2
     comm_range: float = 4.0
-    sense_range: tuple[float, float, float] = (2.0, 2.0, 8.0)
+    sense_range: tuple[float, float, float] = (2.0, 2.0, 15.0)
     goal_dist_min: float = 2.5
     goal_dist_max: float = 4.0
     goal_angle_max: float = math.pi / 2
@@ -226,7 +227,9 @@ class TransportEnv:
         if env_ids is None:
             mask = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
         else:
-            env_ids = env_ids.to(self.device)
+            if env_ids.dtype not in (torch.long, torch.int32):
+                raise ValueError(f"env_ids must hold integers, got dtype {env_ids.dtype}.")
+            env_ids = env_ids.to(self.device, torch.long)
             if env_ids.numel() and (env_ids.min() < 0 or env_ids.max() >= self.num_envs):
                 raise ValueError(f"env_ids must lie in [0, {self.num_envs}).")
             mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
@@ -265,6 +268,15 @@ class TransportEnv:
             retry = (clear < cfg.start_clear).unsqueeze(-1)
             fresh = (self._rand(num, self.num_robots, 2) * 2.0 - 1.0) * self.robot_limit
             pos = torch.where(retry, fresh, pos)
+
+        # The loop leaves the last draw unmeasured. This step puts any robot that is still too
+        # close onto a ring around the payload, so the clearance rule holds for every reset.
+        clear = rect_contact(pos, payload, cfg.payload_hx, cfg.payload_hy).sdist
+        offset = pos - payload[:, None, :2]
+        span = torch.linalg.vector_norm(offset, dim=-1, keepdim=True).clamp(min=1e-6)
+        ring = payload[:, None, :2] + offset / span * (self.payload_radius + cfg.start_clear)
+        pos = torch.where((clear < cfg.start_clear).unsqueeze(-1), ring, pos)
+        pos = pos.clamp(-self.robot_limit, self.robot_limit)
 
         keep = mask[:, None]
         self.payload = torch.where(keep, payload, self.payload)
@@ -314,7 +326,9 @@ class TransportEnv:
         torque = (_cross(push_arm, push_force) + _cross(grip_arm, grip_force)).sum(dim=1)
 
         n_latched = self.latched.sum(dim=1).to(force.dtype)
-        slip_force = torch.clamp(cfg.friction_f0 - cfg.friction_df * n_latched, min=cfg.friction_fmin)
+        slip_force = torch.clamp(
+            cfg.friction_f0 - cfg.friction_df * n_latched, min=cfg.friction_fmin
+        )
         slip_torque = cfg.torque_frac * slip_force * cfg.payload_hx
 
         magnitude = torch.linalg.vector_norm(force, dim=-1)
@@ -331,12 +345,16 @@ class TransportEnv:
             dim=-1,
         )
 
+        # The arena clamp runs before the projection, never after it. A clamp after the projection
+        # pushes a robot back into a payload that stands against a wall. A robot inside the payload
+        # breaks the contact model and the occlusion test at the same time, so the projection is
+        # the last word. A robot squeezed between the payload and a wall can pass the robot limit
+        # by up to one radius.
         pos = self.robot_pos + vel_cmd * cfg.v_max * cfg.dt
         pos = pos.clamp(-self.robot_limit, self.robot_limit)
         after = rect_contact(pos, self.payload, cfg.payload_hx, cfg.payload_hy)
         overlap = (after.sdist < cfg.robot_radius).unsqueeze(-1)
         pos = torch.where(overlap, after.point + after.normal * cfg.robot_radius, pos)
-        pos = pos.clamp(-self.robot_limit, self.robot_limit)
         latch_world = self.payload[:, None, :2] + to_world_vec(self.latch_local, self.payload)
         self.robot_pos = torch.where(self.latched.unsqueeze(-1), latch_world, pos)
 

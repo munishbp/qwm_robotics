@@ -33,7 +33,10 @@ The team has `K` robots. Types: `0 pusher`, `1 gripper`, `2 scout`. The default 
 
 - Arena: square, half size `A = 5.0` m. Robots and the payload stay inside it.
 - Payload: rectangle with half extents `(hx, hy) = (0.8, 0.4)` m. Pose `(x, y, theta)`.
-- Robots: discs of radius `0.2` m. State is position `(x, y)`. No heading.
+- Robots: discs of radius `0.2` m. State is position `(x, y)`. No heading. A robot never enters the
+  payload rectangle. When the payload stands against the wall, a robot squeezed between them may
+  leave the arena by up to one diameter. Non penetration wins because contact, force, and occlusion
+  depend on it.
 - Time step `dt = 0.1` s. Episode length `T = 150` steps.
 - Goal: a pose `(gx, gy, gtheta)`. Reset samples the payload pose and a goal at distance 2.5 to
   4.0 m. The goal orientation differs from the start orientation by a random angle in
@@ -46,7 +49,8 @@ The team has `K` robots. Types: `0 pusher`, `1 gripper`, `2 scout`. The default 
 
 - Every robot moves with velocity `clip(vx, vy) * v_max`, `v_max = 1.5` m/s. A robot cannot enter
   the payload rectangle. The env projects it out along the closest boundary normal.
-- Pusher: if the robot is within `d_c = 0.25` m of the payload boundary and `u > 0`, it applies a
+- Pusher: if the robot disc edge is within `d_c = 0.25` m of the payload boundary (robot center within
+  `0.45` m) and `u > 0`, it applies a
   force `u * F_p` at the closest boundary point along the inward normal. `F_p = 1.0` N.
 - Gripper: if `u > 0` and within `d_c`, it latches at the closest boundary point. The latch point is
   fixed in the payload frame. While latched, the gripper sits at the latch point and applies force
@@ -94,7 +98,7 @@ it. The env exposes `terminated` and `truncated` separately.
 | 15 | time fraction `t / T` |
 
 The payload is visible if its center is within the sensing range of the type. Ranges: pusher `2.0`,
-gripper `2.0`, scout `8.0` m. The scout always sees it.
+gripper `2.0`, scout `15.0` m, which exceeds the arena diagonal, so the scout always sees it.
 
 `full[e, k]` is the centralized observation for the oracle baseline: `local[e, k]` followed by the
 absolute payload pose `(px / A, py / A, cos, sin)` and every robot's `(x / A, y / A, latched)` in index

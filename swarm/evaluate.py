@@ -63,7 +63,7 @@ def evaluate(agent: Agent, make_env, belief_cfg: BeliefConfig, policy: str = "me
     rows = []
     for i in range(batches):
         env = make_env(seed + i)
-        rows.append(run_batch(agent, env, belief_cfg, policy, search_cfg, env.cfg.episode_length))
+        rows.append(run_batch(agent, env, belief_cfg, policy, search_cfg, env.cfg.horizon))
     out = {}
     for k in rows[0]:
         vals = [r[k] for r in rows]

@@ -34,8 +34,8 @@ def main() -> None:
         args.envs, args.steps, args.out = 16, 200, "data/offline_smoke.pt"
     dev = setup(args.seed)
     env = make_env(args.envs, args.seed, training=True, device=dev)
-    types = torch.tensor(env.types, device=dev)
-    buf = Buffer(env.num_envs, args.steps, types, dev, full_dim(env.K))
+    types = env.types
+    buf = Buffer(env.num_envs, args.steps, types, dev, full_dim(env.num_robots))
     runner = Runner(env, buf, BeliefConfig(lag=1))
     ctrl = ScriptedController(env, noise=args.noise)
     successes = 0
