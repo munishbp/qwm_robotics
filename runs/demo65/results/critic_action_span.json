@@ -1,0 +1,10 @@
+{
+  "q_span_across_candidates": 0.0056242278777062895,
+  "ensemble_spread_at_mean": 0.005264619567121069,
+  "argmax_picks_mean_fraction": 0.007204861335533982,
+  "distance_of_chosen_to_mean": 0.8646572584907214,
+  "distance_of_average_candidate_to_mean": 0.7601729944348335,
+  "ratio_r": 1.0683066090532105,
+  "sim": "2d",
+  "ckpt": "runs/demo65/checkpoints/belief_best.pt"
+}

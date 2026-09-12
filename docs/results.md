@@ -400,13 +400,11 @@ twice its own noise, the 2D critic by less than its noise, and the argmax picks 
 about 1.5 percent of the time on both. So the mjlab search selects with a weak but real signal,
 which is consistent with its small margin over a random sample (below).
 
-**A rival explanation the study did not separate.** The 2D offline buffer is 98.8 percent
-successful and the mjlab buffer 65.2 percent (`results/offline.json`, `runs/mjlab/results/offline.json`).
-The critic's target is the value of the recorded next action, so on a buffer where almost every
-action succeeds the critic has nothing to separate actions by, and on a buffer with failures it
-does. This explains the same span difference without any appeal to the physics. The two
-explanations are separable in about 35 GPU minutes: collect a 2D buffer with more action noise
-so its success rate falls to 65 percent, retrain, and measure the span again (`next_steps.md`).
+**A rival explanation, tested in section 14.6.** The 2D offline buffer is 98.8 percent successful
+and the mjlab buffer 65.2 percent. Retraining on a 2D buffer at 60.7 percent raised the critic's
+span to 1.07 times its noise, most of the way to mjlab's 1.27, so the span difference above was
+mostly a property of the demonstrations. Search still lost on that snapshot, so the span is not
+what makes search help.
 
 **Caveat.** The sampled policy scores 65.4 percent at lag 1 (section 13.7), within noise of the
 depth 2 search (67 to 70 across the sweeps). The mean action of this policy stalls in contact
@@ -629,19 +627,51 @@ points at every lag from 1 up.
 
 H4 is refuted without the confound on both simulators, by 19 to 40 points.
 
-DEMO_QUALITY_PLACEHOLDER
+### 14.6 The demonstration quality control
+
+Reviewer 1 proposed that the flat 2D critic came from near perfect demonstrations (98.8 percent
+successful) rather than from the physics. The control collected a 2D buffer at 60.7 percent
+success (action noise 0.6 instead of 0.2), retrained the belief agent for 12,000 steps on the
+same recipe (`runs/demo65/`), and probed the critic and the search.
+
+| Snapshot | Demonstration success | Critic span across candidates | Ratio to ensemble noise |
+|---|---|---|---|
+| 2D, original | 98.8 | 0.0033 | 0.66 |
+| 2D, noisier demonstrations | 60.7 | 0.0056 | 1.07 |
+| mjlab | 65.2 | 0.0068 | 1.27 |
+
+| Setting on the noisier 2D snapshot (128 envs, 3 batches, lag 1) | Success (%) |
+|---|---|
+| Mean policy | 34.9 ± 1.7 |
+| Sampled policy | 21.1 ± 0.8 |
+| Random candidate | 24.2 ± 0.5 |
+| Critic argmax, depth 0 | 13.8 ± 0.5 |
+| Depth 2 | 16.1 ± 1.4 |
+| Depth 6, beta 0.9 | 16.4 ± 1.2 |
+
+Two conclusions. First, the reviewer was right about the span: with failures in the
+demonstrations the 2D critic's action span rises most of the way to mjlab's, so the span
+difference in section 13.3 was mostly a property of the data, not the physics. Second, the span
+is not what decides whether search helps: on this snapshot the critic separates candidates by
+more than its own noise and search still loses 18 points to the mean policy, and every
+stochastic arm loses too. The quantity that does track the search's value across the three
+snapshots is the world model's contribution measured by the random model control (section 14.2):
+11 to 13 points on mjlab, 4 on 2D. The best supported statement of the mechanism is therefore
+that search helps where the rollout tells the critic something about action consequences that
+the root belief does not, and the 2D task's quasi static rollouts tell it little.
 
 ## 11. Conclusions
 
-1. **Test time world model search helps a decentralized heterogeneous team when the critic can
-   rank actions, and hurts when it cannot.** On mjlab it adds 24.5 points over the mean action at
-   lag 1 (45.1 to 69.5) and the world model rollout accounts for 8 of them. On the 2D simulator the
-   same code loses 9 points. The measured mediator is the critic's span across the policy's own
-   candidates relative to its ensemble noise: 1.28 on mjlab, 0.66 on 2D. Both are single snapshots
-   and the two simulators differ in more than the physics (the 2D demonstration buffer is 98.8
-   percent successful against 65.2 on mjlab, which alone could make a SARSA critic flat), so this
-   is one pair of observations consistent with the mechanism, not a test of it; `next_steps.md`
-   lists the controls.
+1. **Test time world model search helps a decentralized heterogeneous team when the rollout
+   tells the critic something the root belief does not, and hurts otherwise.** On mjlab depth 6
+   search beats the sampled policy by 12.8 points at lag 0 and 7.1 at lag 1 (256 envs, 5 batches),
+   a random world model costs 11 to 13 points, and the critic argmax alone never beats a random
+   candidate. On the 2D simulator the same code loses to every baseline on two snapshots, one with
+   near perfect demonstrations and one with 61 percent demonstrations, and a random model costs
+   only 4 points there. The critic's action span is not the mediator: raising it on 2D from 0.66
+   to 1.07 times the ensemble noise did not make search help (section 14.6). The informativeness
+   of the rollout is the best supported one, and it is measured by the random model control, not
+   yet by an independent quantity.
 
 2. **Stale teammate information degrades the search in the direction H2 and H3 predicted, in both
    simulators.** On mjlab the gain of search falls from +35 points at lag 0 to +24 at lag 4 while

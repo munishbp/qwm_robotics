@@ -7,6 +7,14 @@ the measurement that decides it, and the cost in GPU minutes on the pipeline as 
 
 ## The first day
 
+**Status (2026-09-12, evening).** Items 2 to 8 below ran; `results.md` section 14 reports them.
+Item 1 was dropped because the bounded lift explained the transfer loss. The findings: the fair
+H1 resolves on mjlab (depth 6 beats the sampled policy at lags 0 and 1, not at lag 4); the world
+model rollout carries the gain; the critic argmax never beats a random candidate; forward
+correction explains the 2D staleness rise; leader mode without fallback is refuted on both
+simulators; the critic span ratio r rises with noisier demonstrations but does not predict
+whether search helps, so item 6 of the algorithm section is answered in the negative.
+
 The cheapest experiments decide the most. In order of information per GPU minute:
 
 | # | Experiment | Decides | GPU minutes |
