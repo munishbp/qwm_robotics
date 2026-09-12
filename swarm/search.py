@@ -75,9 +75,14 @@ def search_rows(
     nets: Nets, z: torch.Tensor, feat: torch.Tensor, own: torch.Tensor, types: torch.Tensor,
     cfg: SearchConfig, joint_candidates: bool,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """`_search_rows` over chunks of rows, which bounds peak memory."""
-    outs = [_search_rows(nets, z[i:i + CHUNK], feat[i:i + CHUNK], own[i:i + CHUNK], types, cfg, joint_candidates)
-            for i in range(0, z.shape[0], CHUNK)]
+    """`_search_rows` over chunks of rows, which bounds peak memory.
+
+    Memory per row grows with the square of the team size, so the chunk shrinks with it.
+    """
+    k = z.shape[1]
+    chunk = max(32, int(CHUNK * (6 / k) ** 2))
+    outs = [_search_rows(nets, z[i:i + chunk], feat[i:i + chunk], own[i:i + chunk], types, cfg, joint_candidates)
+            for i in range(0, z.shape[0], chunk)]
     return torch.cat([o[0] for o in outs]), torch.cat([o[1] for o in outs])
 
 
