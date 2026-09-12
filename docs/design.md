@@ -234,12 +234,14 @@ One update:
 1. Sample `B / 2` rows from the offline buffer and `B / 2` from the online buffer, `B = 256`.
 2. Build beliefs for all `K` robots at `t` and `t + 1` with the current encoders, the message
    procedure of 6.2 at the training staleness `L_train = 1`, and the fusion of 6.3.
-3. Critic loss on `B * K` per robot transitions with the shared team reward, on a detached
-   belief. The critic never shapes the representation. A bootstrapped loss that shapes the fusion
-   has a degenerate fixed point where the belief goes constant, and every run that allowed it
-   collapsed between steps 3,500 and 5,000 (the belief spread across states halved and the
-   terminal rows could no longer be fit).
-3b. Representation loss into the encoders and the fusion: the cloning term of step 4 plus a
+3. Critic loss on `B * K` per robot transitions with the shared team reward. The critic loss
+   shapes the encoders and the fusion. The bootstrap belief at `t + 1` comes from target copies of
+   the encoders and the fusion, updated by Polyak averaging with the critic target. Without the
+   target copies the belief collapsed to a constant between steps 3,500 and 5,000 in every run
+   (the belief spread across states halved and the terminal rows could no longer be fit).
+   Without the critic gradient into the representation the critic could not fit the terminal rows
+   at all.
+3b. Two supervised anchors into the encoders and the fusion: the cloning term of step 4 plus a
    decoder from the belief to the decoder target (payload pose relative to the robot, latch flag,
    visible flag), weight `1.0`. This is privileged state at training time only. It is what forces
    the fusion to recover the payload pose from a teammate's message.

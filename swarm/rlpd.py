@@ -35,10 +35,11 @@ class RLPDConfig:
     # gradient to follow. A behavior cloning term on the offline half of every batch gives the
     # actor the scripted behavior while the critic learns the value the search needs.
     bc_weight: float = 1.0
-    # The representation (encoders and fusion) is trained by supervised losses only: the cloning
-    # term and a decoder from the belief to the payload pose. A bootstrapped critic loss that
-    # shapes the fusion has a degenerate fixed point where the belief goes constant, and every
-    # run that allowed it collapsed between steps 3,500 and 5,000.
+    # The representation (encoders and fusion) is shaped by the critic loss and by two supervised
+    # anchors, the cloning term and a decoder from the belief to the payload pose. The bootstrap
+    # belief comes from target copies of the encoders and the fusion. Without the target copies
+    # the belief collapsed to a constant between steps 3,500 and 5,000 in every run, and without
+    # the critic gradient the critic could not fit the terminal rows.
     dec_b_weight: float = 1.0
     # The reward is one terminal unit, so every true value lies in [0, 1]. Clamping the target to
     # that range removes the offset that the minimum over noisy heads compounds through the
@@ -75,9 +76,9 @@ class Agent:
             self.nets.log_alpha.fill_(math.log(cfg.init_alpha))
         self.belief_fn = beliefs_full if cfg.obs_mode == "full" else beliefs
         n = self.nets
-        self.opt_critic = torch.optim.Adam(n.critic.parameters(), lr=cfg.lr)
-        self.opt_repr = torch.optim.Adam(
-            list(n.enc.parameters()) + list(n.fuse.parameters()) + list(n.dec_b.parameters()), lr=cfg.lr
+        self.opt_critic = torch.optim.Adam(
+            list(n.critic.parameters()) + list(n.enc.parameters()) + list(n.fuse.parameters())
+            + list(n.dec_b.parameters()), lr=cfg.lr
         )
         self.opt_actor = torch.optim.Adam(n.actor.parameters(), lr=cfg.lr)
         self.opt_alpha = torch.optim.Adam([n.log_alpha], lr=cfg.lr)
@@ -93,7 +94,7 @@ class Agent:
         slot = buf._slot(row)
         now = self.belief_fn(self.nets, buf, env, row, use_next=False)
         with torch.no_grad():
-            nxt = self.belief_fn(self.nets, buf, env, row, use_next=True)
+            nxt = self.belief_fn(self.nets.target_view(), buf, env, row, use_next=True)
         # The next recorded action exists when the next row is in the buffer and in the same
         # episode. Otherwise the bootstrap uses the policy mean.
         nrow = (row + 1).clamp(max=buf.t - 1)
@@ -130,25 +131,20 @@ class Agent:
             not_done = (~d["term"]).float().unsqueeze(-1)
             y = d["r"].unsqueeze(-1) + cfg.gamma * not_done * v_next  # [B, K]
             y = y.clamp(cfg.target_min, cfg.target_max)
-        q = n.critic(d["b"].detach(), d["a"])  # [M, B, K]
+        q = n.critic(d["b"], d["a"])  # [M, B, K]
         critic_loss = F.mse_loss(q, y.unsqueeze(0).expand_as(q))
-        self.opt_critic.zero_grad(set_to_none=True)
-        critic_loss.backward()
-        self.opt_critic.step()
-
-        # Representation and cloning. The cloning term flows into the encoders and the fusion as
-        # well as the actor; it is what teaches the fusion to read the payload position out of a
-        # teammate's message when the own sensor cannot see it. The belief decoder anchors the
-        # belief to the payload pose.
+        # The cloning term flows into the encoders and the fusion as well as the actor; it is what
+        # teaches the fusion to read the payload position out of a teammate's message when the
+        # own sensor cannot see it. The belief decoder anchors the belief to the payload pose.
         bc_loss = torch.zeros((), device=self.device)
         if offline is not None and cfg.bc_weight > 0:
             mu = n.actor.mean(d["b"][n_online:])
             bc_loss = F.mse_loss(mu, d["a"][n_online:])
         dec_b_loss = F.mse_loss(n.dec_b(d["b"]), d["target"])
-        self.opt_repr.zero_grad(set_to_none=True)
+        self.opt_critic.zero_grad(set_to_none=True)
         self.opt_actor.zero_grad(set_to_none=True)
-        (cfg.bc_weight * bc_loss + cfg.dec_b_weight * dec_b_loss).backward()
-        self.opt_repr.step()
+        (critic_loss + cfg.bc_weight * bc_loss + cfg.dec_b_weight * dec_b_loss).backward()
+        self.opt_critic.step()
         self.opt_actor.step()
 
         # SAC actor term on detached beliefs, so the RL objective shapes the actor only.

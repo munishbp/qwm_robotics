@@ -212,6 +212,14 @@ class Nets(nn.Module):
         super().__init__()
         self.enc = TypeEncoders(enc_in)
         self.fuse = Fusion()
+        # Target copies of the representation for the bootstrap. Without them the target belief
+        # drifts with the online one and the bootstrapped loss can drive the belief to a constant.
+        self.enc_target = TypeEncoders(enc_in)
+        self.fuse_target = Fusion()
+        self.enc_target.load_state_dict(self.enc.state_dict())
+        self.fuse_target.load_state_dict(self.fuse.state_dict())
+        for p in list(self.enc_target.parameters()) + list(self.fuse_target.parameters()):
+            p.requires_grad_(False)
         self.actor = Actor()
         self.critic = EnsembleCritic(num_critics)
         self.critic_target = EnsembleCritic(num_critics)
@@ -227,5 +235,11 @@ class Nets(nn.Module):
 
     @torch.no_grad()
     def polyak(self, tau: float) -> None:
-        for p, pt in zip(self.critic.parameters(), self.critic_target.parameters()):
-            pt.lerp_(p, tau)
+        for src, dst in ((self.critic, self.critic_target), (self.enc, self.enc_target), (self.fuse, self.fuse_target)):
+            for p, pt in zip(src.parameters(), dst.parameters()):
+                pt.lerp_(p, tau)
+
+    def target_view(self):
+        """The modules the bootstrap belief uses: target encoders and fusion, live model and actor."""
+        from types import SimpleNamespace
+        return SimpleNamespace(enc=self.enc_target, fuse=self.fuse_target, wm=self.wm, actor=self.actor)
