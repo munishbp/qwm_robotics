@@ -27,3 +27,8 @@ results/logs/
 results/run_all.*
 results/*.pid
 results/episodes.json
+**/results/logs/
+**/results/run_all.*
+**/results/*.pid
+**/results/episodes.json
+runs/*_smoke/
