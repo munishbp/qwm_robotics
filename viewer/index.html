@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transport Search Viewer</title>
+<style>
+:root {
+  --bg: #f4f5f8; --panel: #ffffff; --fg: #16181d; --muted: #5c6270;
+  --border: #d3d7e0; --scene: #eceef4; --grid: #b9bfcd; --accent: #3f7fd0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161b; --panel: #1c1f26; --fg: #e6e8ee; --muted: #9aa1b1;
+    --border: #333846; --scene: #0f1116; --grid: #333a49; --accent: #6fa8f5;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161b; --panel: #1c1f26; --fg: #e6e8ee; --muted: #9aa1b1;
+  --border: #333846; --scene: #0f1116; --grid: #333a49; --accent: #6fa8f5;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+#app { display: flex; flex-direction: column; height: 100vh; }
+header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 12px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.row + .row { margin-top: 8px; }
+label { color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
+select, button {
+  font: inherit; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px;
+}
+button { cursor: pointer; min-width: 66px; }
+button:hover { border-color: var(--accent); }
+select { max-width: 320px; }
+input[type=range] { accent-color: var(--accent); flex: 1 1 240px; min-width: 160px; }
+#stage { flex: 1 1 auto; display: flex; gap: 8px; padding: 8px; min-height: 0; }
+.pane {
+  position: relative; flex: 1 1 0; min-width: 0; background: var(--scene);
+  border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+}
+.pane canvas { display: block; width: 100%; height: 100%; }
+.info {
+  position: absolute; left: 8px; top: 8px; padding: 6px 9px; border-radius: 5px;
+  background: var(--panel); border: 1px solid var(--border); opacity: 0.94;
+  font-size: 12px; white-space: pre-line; pointer-events: none; max-width: 60%;
+}
+footer {
+  background: var(--panel); border-top: 1px solid var(--border);
+  padding: 6px 12px; font-size: 12px; color: var(--muted);
+}
+.key { display: inline-flex; align-items: center; gap: 5px; margin-right: 14px; }
+.dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.bar { width: 78px; height: 9px; border-radius: 5px; display: inline-block;
+  background: linear-gradient(90deg, #17a34a, #d8c42a, #cf3b2f); }
+#nodata { max-width: 640px; margin: 18vh auto; padding: 0 20px; }
+code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+
+<div id="nodata" hidden>
+  <h1>Transport Search Viewer</h1>
+  <p>This page holds no episode data.</p>
+  <p>Run the build step, then open the file that it writes:</p>
+  <p><code>python viewer/build.py results/episodes.json --out figures/viewer.html</code></p>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <div class="row">
+      <label>Episode <select id="epA"></select></label>
+      <label>Compare <select id="epB"></select></label>
+      <label>Messages to <select id="robot"></select></label>
+      <label><input type="checkbox" id="allLinks"> Show all links</label>
+    </div>
+    <div class="row">
+      <button id="play">Play</button>
+      <input type="range" id="frame" min="0" max="0" value="0" step="1">
+      <label>Speed <select id="speed">
+        <option value="0.25">0.25x</option><option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option><option value="2">2x</option>
+        <option value="4">4x</option>
+      </select></label>
+    </div>
+  </header>
+  <div id="stage">
+    <div class="pane"><canvas id="cA"></canvas><div class="info" id="iA"></div></div>
+    <div class="pane" id="paneB" hidden><canvas id="cB"></canvas><div class="info" id="iB"></div></div>
+  </div>
+  <footer>
+    <span class="key"><i class="dot" style="background:#e07b39"></i>pusher</span>
+    <span class="key"><i class="dot" style="background:#3f7fd0"></i>gripper</span>
+    <span class="key"><i class="dot" style="background:#3aa35c"></i>scout</span>
+    <span class="key"><i class="bar"></i>message age 0 to 8 steps</span>
+    <span class="key"><i class="dot" style="background:#2f9e55"></i><i class="dot" style="background:#c0392b"></i>payload outcome at the last frame</span>
+    <span class="key">Drag to orbit. Scroll to zoom.</span>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+<script>
+/*__EPISODE_DATA__*/
+</script>
+<script>
+(function () {
+  "use strict";
+
+  var D = window.EPISODES;
+  if (!D || !D.episodes || !D.episodes.length || typeof THREE === "undefined") {
+    document.getElementById("nodata").hidden = false;
+    return;
+  }
+  document.getElementById("app").hidden = false;
+
+  var A = D.arena_half, HX = D.payload_half[0], HY = D.payload_half[1];
+  var RR = D.robot_radius, DT = D.dt, TOL = D.goal_pos_tol;
+  var BODY_H = 0.3, ROBOT_H = 0.25, LINK_Y = 0.55;
+  var TYPE_COLOR = [0xe07b39, 0x3f7fd0, 0x3aa35c];
+  var PAYLOAD_COLOR = 0x8d93a3, OK_COLOR = 0x2f9e55, BAD_COLOR = 0xc0392b, GOAL_COLOR = 0x7a86ff;
+  var MAX_AGE = 8;
+
+  // The recorder stops appending poses at the terminal step, so a frame index can pass the end.
+  function frameCount(ep) { return ep.payload.length; }
+  function at(list, i) { return list[Math.min(i, list.length - 1)]; }
+
+  function ageColor(age, color) {
+    var f = Math.min(Math.max(age, 0), MAX_AGE) / MAX_AGE;
+    return color.setHSL(0.33 * (1 - f), 0.85, 0.45);
+  }
+
+  function labelSprite(text, hex) {
+    var c = document.createElement("canvas");
+    c.width = 64; c.height = 64;
+    var g = c.getContext("2d");
+    g.fillStyle = "#" + ("000000" + hex.toString(16)).slice(-6);
+    g.beginPath(); g.arc(32, 32, 26, 0, 6.2832); g.fill();
+    g.fillStyle = "#ffffff";
+    g.font = "bold 34px sans-serif";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(text, 32, 34);
+    var s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+    s.scale.set(0.45, 0.45, 1);
+    return s;
+  }
+
+  function makeView(canvas, infoEl) {
+    var renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    } catch (err) {
+      infoEl.textContent = "This browser cannot start WebGL. The scene stays empty.";
+      return null;
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    var scene = new THREE.Scene();
+    var camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    var sun = new THREE.DirectionalLight(0xffffff, 1.2);
+    sun.position.set(4, 12, 6);
+    scene.add(sun);
+    var view = {
+      renderer: renderer, scene: scene, camera: camera, info: infoEl,
+      ep: null, obj: null, group: null, az: 0, el: 1.15, dist: A * 3.2, w: 0, h: 0
+    };
+    addOrbit(canvas, view);
+    placeCamera(view);
+    return view;
+  }
+
+  function placeCamera(v) {
+    var r = v.dist, ce = Math.cos(v.el);
+    v.camera.position.set(r * ce * Math.sin(v.az), r * Math.sin(v.el), r * ce * Math.cos(v.az));
+    v.camera.lookAt(0, 0, 0);
+  }
+
+  function addOrbit(canvas, v) {
+    var drag = false, px = 0, py = 0;
+    canvas.addEventListener("pointerdown", function (e) {
+      drag = true; px = e.clientX; py = e.clientY; canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", function (e) {
+      if (!drag) return;
+      v.az -= (e.clientX - px) * 0.008;
+      v.el = Math.min(1.52, Math.max(0.12, v.el + (e.clientY - py) * 0.006));
+      px = e.clientX; py = e.clientY;
+      placeCamera(v);
+    });
+    canvas.addEventListener("pointerup", function (e) { drag = false; canvas.releasePointerCapture(e.pointerId); });
+    canvas.addEventListener("pointercancel", function () { drag = false; });
+    canvas.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      v.dist = Math.min(A * 8, Math.max(A * 0.8, v.dist * (e.deltaY > 0 ? 1.1 : 0.9)));
+      placeCamera(v);
+    }, { passive: false });
+  }
+
+  function clearGroup(v) {
+    if (!v.group) return;
+    v.scene.remove(v.group);
+    v.group.traverse(function (n) {
+      if (n.geometry) n.geometry.dispose();
+      if (n.material) {
+        if (n.material.map) n.material.map.dispose();
+        n.material.dispose();
+      }
+    });
+    v.group = null; v.obj = null;
+  }
+
+  function buildArena(group, css) {
+    var floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(2 * A, 2 * A),
+      new THREE.MeshBasicMaterial({ color: css.scene })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.01;
+    group.add(floor);
+    var grid = new THREE.GridHelper(2 * A, 20, css.grid, css.grid);
+    grid.material.transparent = true;
+    grid.material.opacity = 0.55;
+    group.add(grid);
+    var wall = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(2 * A, 0.02, 2 * A)),
+      new THREE.LineBasicMaterial({ color: css.grid })
+    );
+    group.add(wall);
+  }
+
+  function buildEpisode(v, ep, css) {
+    clearGroup(v);
+    var group = new THREE.Group();
+    var K = ep.types.length;
+    buildArena(group, css);
+
+    var goalBox = new THREE.Mesh(
+      new THREE.BoxGeometry(2 * HX, BODY_H, 2 * HY),
+      new THREE.MeshBasicMaterial({ color: GOAL_COLOR, transparent: true, opacity: 0.14 })
+    );
+    goalBox.position.set(ep.goal[0], BODY_H / 2, -ep.goal[1]);
+    goalBox.rotation.y = ep.goal[2];
+    group.add(goalBox);
+    var goalEdge = new THREE.LineSegments(
+      new THREE.EdgesGeometry(goalBox.geometry),
+      new THREE.LineBasicMaterial({ color: GOAL_COLOR })
+    );
+    goalEdge.position.copy(goalBox.position);
+    goalEdge.rotation.y = goalBox.rotation.y;
+    group.add(goalEdge);
+
+    var ring = new THREE.Mesh(
+      new THREE.RingGeometry(TOL - 0.035, TOL, 48),
+      new THREE.MeshBasicMaterial({ color: GOAL_COLOR, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(ep.goal[0], 0.02, -ep.goal[1]);
+    group.add(ring);
+
+    var payload = new THREE.Mesh(
+      new THREE.BoxGeometry(2 * HX, BODY_H, 2 * HY),
+      new THREE.MeshLambertMaterial({ color: PAYLOAD_COLOR })
+    );
+    group.add(payload);
+
+    var robots = [], labels = [];
+    for (var k = 0; k < K; k++) {
+      var color = TYPE_COLOR[ep.types[k]] !== undefined ? TYPE_COLOR[ep.types[k]] : 0x999999;
+      var m = new THREE.Mesh(
+        new THREE.CylinderGeometry(RR, RR, ROBOT_H, 20),
+        new THREE.MeshLambertMaterial({ color: color })
+      );
+      group.add(m); robots.push(m);
+      var s = labelSprite(String(k), color);
+      group.add(s); labels.push(s);
+    }
+
+    var latch = segments(K, 0xffffff);
+    var msg = segments(K * K, 0xffffff);
+    group.add(latch.mesh); group.add(msg.mesh);
+    v.scene.add(group);
+    v.group = group;
+    v.ep = ep;
+    v.obj = { payload: payload, robots: robots, labels: labels, latch: latch, msg: msg, K: K };
+  }
+
+  function segments(maxCount, color) {
+    var geo = new THREE.BufferGeometry();
+    var pos = new Float32Array(maxCount * 6);
+    var col = new Float32Array(maxCount * 6);
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setDrawRange(0, 0);
+    var mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, color: color }));
+    mesh.frustumCulled = false;
+    return { mesh: mesh, pos: pos, col: col, geo: geo };
+  }
+
+  var tmpColor = new THREE.Color();
+
+  function push(seg, n, ax, ay, az, bx, by, bz, color) {
+    var p = n * 6;
+    seg.pos[p] = ax; seg.pos[p + 1] = ay; seg.pos[p + 2] = az;
+    seg.pos[p + 3] = bx; seg.pos[p + 4] = by; seg.pos[p + 5] = bz;
+    for (var i = 0; i < 2; i++) {
+      seg.col[p + i * 3] = color.r; seg.col[p + i * 3 + 1] = color.g; seg.col[p + i * 3 + 2] = color.b;
+    }
+  }
+
+  function commit(seg, n) {
+    seg.geo.setDrawRange(0, n * 2);
+    seg.geo.attributes.position.needsUpdate = true;
+    seg.geo.attributes.color.needsUpdate = true;
+  }
+
+  function updateView(v, frame, sel, showAll) {
+    if (!v || !v.obj) return;
+    var ep = v.ep, o = v.obj, K = o.K;
+    var f = Math.min(frame, frameCount(ep) - 1);
+    var last = f === frameCount(ep) - 1;
+
+    var p = at(ep.payload, f);
+    o.payload.position.set(p[0], BODY_H / 2, -p[1]);
+    o.payload.rotation.y = p[2];
+    o.payload.material.color.setHex(last ? (ep.success ? OK_COLOR : BAD_COLOR) : PAYLOAD_COLOR);
+
+    var rp = at(ep.robots, f);
+    var lt = at(ep.latched, f);
+    for (var k = 0; k < K; k++) {
+      var q = rp[k] || [0, 0];
+      o.robots[k].position.set(q[0], ROBOT_H / 2, -q[1]);
+      o.labels[k].position.set(q[0], ROBOT_H + 0.3, -q[1]);
+    }
+
+    var n = 0;
+    tmpColor.setHex(0xf2c14e);
+    for (k = 0; k < K; k++) {
+      if (!lt || !lt[k] || !rp[k]) continue;
+      push(o.latch, n++, rp[k][0], 0.2, -rp[k][1], p[0], 0.2, -p[1], tmpColor);
+    }
+    commit(o.latch, n);
+
+    n = 0;
+    var ages = ep.ages && ep.ages.length ? at(ep.ages, f) : null;
+    if (ages) {
+      for (var i = 0; i < K; i++) {
+        if (!showAll && i !== sel) continue;
+        var row = ages[i];
+        if (!row) continue;
+        for (var j = 0; j < K; j++) {
+          if (j === i || row[j] === undefined || !rp[i] || !rp[j]) continue;
+          ageColor(row[j], tmpColor);
+          push(o.msg, n++, rp[j][0], LINK_Y, -rp[j][1], rp[i][0], LINK_Y, -rp[i][1], tmpColor);
+        }
+      }
+    }
+    commit(o.msg, n);
+
+    var st = ep.setting || {};
+    var err = "";
+    if (typeof ep.final_pos_error === "number" && typeof ep.final_angle_error === "number") {
+      err = "\nFinal error: " + ep.final_pos_error.toFixed(2) + " m, " + ep.final_angle_error.toFixed(2) + " rad";
+    }
+    v.info.textContent =
+      ep.label + "\nFrame " + f + " of " + (frameCount(ep) - 1) + ". Time " + (f * DT).toFixed(1) + " s." +
+      "\nSetting: lag " + st.lag + ", depth " + st.depth +
+      "\nOutcome: " + (ep.success ? "success" : "failure") + ", length " + ep.length + err;
+  }
+
+  function resize(v) {
+    var el = v.renderer.domElement;
+    var w = el.clientWidth, h = el.clientHeight;
+    if (!w || !h || (w === v.w && h === v.h)) return;
+    v.w = w; v.h = h;
+    v.renderer.setSize(w, h, false);
+    v.camera.aspect = w / h;
+    v.camera.updateProjectionMatrix();
+  }
+
+  var epA = document.getElementById("epA"), epB = document.getElementById("epB");
+  var robotSel = document.getElementById("robot"), allLinks = document.getElementById("allLinks");
+  var playBtn = document.getElementById("play"), slider = document.getElementById("frame");
+  var speedSel = document.getElementById("speed"), paneB = document.getElementById("paneB");
+
+  D.episodes.forEach(function (ep, i) {
+    var text = i + ": " + ep.label + " [" + (ep.success ? "success" : "failure") + ", " + ep.length + "]";
+    epA.add(new Option(text, String(i)));
+    epB.add(new Option(text, String(i)));
+  });
+  epB.insertBefore(new Option("off", "-1"), epB.firstChild);
+  epB.value = "-1";
+
+  var viewA = makeView(document.getElementById("cA"), document.getElementById("iA"));
+  var viewB = makeView(document.getElementById("cB"), document.getElementById("iB"));
+  var frame = 0, playing = false, acc = 0, lastMs = 0;
+
+  function css() {
+    var s = getComputedStyle(document.documentElement);
+    return { scene: s.getPropertyValue("--scene").trim(), grid: s.getPropertyValue("--grid").trim() };
+  }
+
+  function current(v) { return v && v.ep; }
+
+  function loadEpisodes() {
+    var c = css();
+    var a = D.episodes[Number(epA.value)];
+    if (viewA) {
+      buildEpisode(viewA, a, c);
+      viewA.scene.background = new THREE.Color(c.scene);
+    }
+    var bIndex = Number(epB.value);
+    paneB.hidden = bIndex < 0;
+    if (viewB && bIndex >= 0) {
+      buildEpisode(viewB, D.episodes[bIndex], c);
+      viewB.scene.background = new THREE.Color(c.scene);
+    } else if (viewB) {
+      clearGroup(viewB);
+      viewB.info.textContent = "";
+    }
+    fillRobots(a.types.length);
+    slider.max = String(maxFrames() - 1);
+    if (frame > maxFrames() - 1) frame = maxFrames() - 1;
+    slider.value = String(frame);
+    draw();
+  }
+
+  function fillRobots(K) {
+    var keep = Number(robotSel.value) || 0;
+    robotSel.innerHTML = "";
+    for (var k = 0; k < K; k++) robotSel.add(new Option("robot " + k, String(k)));
+    robotSel.value = String(keep < K ? keep : 0);
+  }
+
+  function maxFrames() {
+    var m = current(viewA) ? frameCount(viewA.ep) : 1;
+    if (!paneB.hidden && current(viewB)) m = Math.max(m, frameCount(viewB.ep));
+    return Math.max(m, 1);
+  }
+
+  function draw() {
+    var sel = Number(robotSel.value) || 0;
+    updateView(viewA, frame, sel, allLinks.checked);
+    if (!paneB.hidden) updateView(viewB, frame, sel, allLinks.checked);
+  }
+
+  function setPlaying(on) {
+    playing = on;
+    playBtn.textContent = on ? "Pause" : "Play";
+  }
+
+  epA.addEventListener("change", loadEpisodes);
+  epB.addEventListener("change", loadEpisodes);
+  robotSel.addEventListener("change", draw);
+  allLinks.addEventListener("change", draw);
+  slider.addEventListener("input", function () {
+    frame = Number(slider.value);
+    setPlaying(false);
+    draw();
+  });
+  playBtn.addEventListener("click", function () {
+    if (!playing && frame >= maxFrames() - 1) frame = 0;
+    setPlaying(!playing);
+  });
+
+  var dark = window.matchMedia("(prefers-color-scheme: dark)");
+  if (dark.addEventListener) dark.addEventListener("change", loadEpisodes);
+
+  function tick(ms) {
+    requestAnimationFrame(tick);
+    var step = lastMs ? Math.min(ms - lastMs, 100) : 0;
+    lastMs = ms;
+    if (playing) {
+      acc += (step / 1000) * Number(speedSel.value) / DT;
+      while (acc >= 1) { acc -= 1; frame += 1; }
+      if (frame >= maxFrames() - 1) { frame = maxFrames() - 1; setPlaying(false); }
+      slider.value = String(frame);
+      draw();
+    }
+    [viewA, viewB].forEach(function (v, i) {
+      if (!v || (i === 1 && paneB.hidden)) return;
+      resize(v);
+      v.renderer.render(v.scene, v.camera);
+    });
+  }
+
+  loadEpisodes();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
