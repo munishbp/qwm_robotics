@@ -32,11 +32,12 @@ design still leaves open. This document decides neither of them.
 | $\alpha$, $\bar{\mathcal{H}}$ | Entropy temperature and target entropy | $\alpha$ learned, $\bar{\mathcal{H}} = -3$ |
 | $\theta, \phi, \bar\phi, \psi$ | Actor, critic, target critic, world model parameters | Polyak rate $\rho = 0.005$ |
 | $M$ | Critic ensemble size | 10 |
+| $\lambda_{\text{bc}}$ | Behavior cloning weight on the offline half | 1.0 |
 | $B$, $G$ | Batch rows, updates per batched env step | 256, 4 |
 | $L$, $L_{\max}$ | Staleness of a teammate message, and the cap on it | $L_{\text{train}} = 1$, swept 0, 1, 2, 4; $L_{\max} = 8$ |
 | $D$, $d$ | Search depth, and the depth index $0 \le d \le D$ | swept $-1$, 0, 1, 2, 4, 6 |
 | $N$, $J$ | Candidates per node, beam width | 8, 4 |
-| $\beta$ | Tree search discount | 0.5 default, swept 0.1 to 1.0 |
+| $\beta$ | Tree search discount | 0.5 default, swept 0.0 to 1.0 |
 | $\nu_i$ | Scalar uncertainty of robot $i$ | equation (28) |
 | $A$, $h_x$, $h_y$, $R_c$ | Arena half size, payload half extents, comm radius | 5.0, 0.8, 0.4, 4.0 m |
 
@@ -157,20 +158,31 @@ $1 - \tanh^2 u_n$; without it the entropy belongs to the pre squash Gaussian, th
 and $\alpha$ drifts. Use $\log(1 - \tanh^2 u) = 2(\log 2 - u - \mathrm{softplus}(-2u))$, because $1 - \tanh^2 u$ underflows
 for $|u| > 10$.
 
-$$\mathcal{L}_\pi(\theta) = \mathbb{E}_{b,\xi}\left[\alpha \log \pi_\theta\big(a_\theta(b,\xi) \mid b\big) - \frac{1}{M}\sum_{m=1}^{M} Q_{\phi,m}\big(b, a_\theta(b,\xi)\big)\right] \tag{15}$$
+$$\mathcal{L}_\pi(\theta) = \underbrace{\mathbb{E}_{b,\xi}\left[\alpha \log \pi_\theta\big(a_\theta(b,\xi) \mid b\big) - \frac{1}{M}\sum_{m=1}^{M} Q_{\phi,m}\big(b, a_\theta(b,\xi)\big)\right]}_{\text{SAC}} \ +\ \underbrace{\lambda_{\text{bc}}\,\mathbb{E}_{\mathcal{D}_{\text{off}}}\Big[\big\|\mu^{\tanh}_\theta(b) - a_{\text{data}}\big\|_2^2\Big]}_{\text{behavior cloning}}, \qquad \mu^{\tanh}_\theta(b) = \tanh\big(\mu_\theta(b)\big), \qquad \lambda_{\text{bc}} = 1.0 \tag{15}$$
 
-Design section 6.4 fixes the actor objective to the mean over all $M$ heads and not a minimum. The actor should climb the
-ensemble's best estimate, and the pessimism belongs in the target, where a bootstrap can compound.
+Design section 6.4 fixes the first term to the mean over all $M$ heads and not a minimum, because the actor should climb the
+ensemble's best estimate while the pessimism stays in the target of equation (12), where a bootstrap can compound.
+
+The second term is behavior cloning on the offline half of every batch, against the scripted action $a_{\text{data}}$ recorded
+in that row. It exists because under the sparse reward the critic stays flat in the action: after 8,000 updates the value at
+the data action, at the policy mean, at zero, and at a random action all sat at 0.54, so the first term carried no gradient in
+$a$ and the actor stayed near zero velocity. The term hands the actor the scripted behavior while the critic keeps learning
+the value that the search of section 9 needs.
+
+This is a deliberate deviation from RLPD, in the style of TD3+BC. It acts on the actor alone, and it never enters the critic
+target of equation (12), the critic loss of equation (13), or the world model loss of equation (22), so the pessimism of
+equation (19) and the QWM claim of section 5 are both untouched.
 
 $$\mathcal{L}_\alpha = \mathbb{E}_{b, a \sim \pi_\theta}\big[-\alpha\big(\log \pi_\theta(a \mid b) + \bar{\mathcal{H}}\big)\big], \qquad \bar{\mathcal{H}} = -3 \tag{16}$$
 
 The gradient is $-(\log \pi + \bar{\mathcal{H}})$, so when the policy entropy falls below $-\bar{\mathcal{H}}$ the temperature
 rises and pays the policy to spread out again. The design sets $\bar{\mathcal{H}} = -3$, the standard choice of minus the
-action dimension.
+action dimension, and starts $\alpha$ at 0.1.
 
 ## 4. RLPD
 
-RLPD is Ball et al. (2023). It makes three changes to SAC and adds a second buffer.
+RLPD is Ball et al. (2023). It makes three changes to SAC and adds a second buffer. Equation (15) adds a fourth change that
+RLPD itself does not have.
 
 $$\mathcal{D} = \tfrac12 \mathcal{D}_{\text{off}} + \tfrac12 \mathcal{D}_{\text{on}}, \qquad \mathbb{E}_{\mathcal{D}}[f] = \tfrac12 \mathbb{E}_{\mathcal{D}_{\text{off}}}[f] + \tfrac12 \mathbb{E}_{\mathcal{D}_{\text{on}}}[f] \tag{17}$$
 
@@ -252,11 +264,13 @@ $t_j$, so every step substitutes a guess for an observation, and section 10 turn
 
 ## 7. Attention fusion
 
-$$\varphi_i = [e_i; 0; \nu_i; \tau_i], \quad \varphi_j = [\hat{z}_j; L_j; \nu_j; \tau_j]; \qquad q = W_q e_i,\ k_s = W_k \varphi_s,\ v_s = W_v \varphi_s, \qquad w_s = \frac{\exp(\langle q, k_s\rangle/\sqrt{d_k})}{\sum_{s'}\exp(\langle q, k_{s'}\rangle/\sqrt{d_k})}, \qquad \mathrm{att}_i = \sum_{s \in \{i\} \cup \mathcal{N}_i} w_s v_s \tag{26}$$
+$$\varphi_i = [e_i;\ 0;\ \tau_i], \quad \varphi_j = [\hat{z}_j;\ L_j / L_{\max};\ \tau_j]; \qquad q = W_q e_i,\ k_s = W_k \varphi_s,\ v_s = W_v \varphi_s, \qquad w_s = \frac{\exp(\langle q, k_s\rangle/\sqrt{d_k})}{\sum_{s'}\exp(\langle q, k_{s'}\rangle/\sqrt{d_k})}, \qquad \mathrm{att}_i = \sum_{s \in \{i\} \cup \mathcal{N}_i} w_s v_s \tag{26}$$
 
-The age, the uncertainty, and the type ride along with the latent, so the layer can learn to discount an old or an uncertain
-estimate instead of the designer fixing a weight by hand. This is scaled dot product attention from Vaswani et al. (2017) over
-a set of at most 16 vectors, the query comes from the own encoding only, and the design uses 4 heads.
+Four extra values ride along with each latent: the age fraction $L_j/L_{\max}$ and the type one hot, so the layer can learn to
+discount an old estimate instead of the designer fixing a weight by hand. The uncertainty $\nu_j$ is **not** a fusion feature
+and serves only the election of equation (28), because the offline buffer has no critic, so a stored uncertainty would mark
+the data source inside every batch and the fusion layer could read it. This is scaled dot product attention from Vaswani et
+al. (2017) over a set of at most 16 vectors, the query comes from the own encoding only, and the design uses 4 heads.
 
 $$b_i = \mathrm{att}_i + \mathrm{MLP}(\mathrm{att}_i) \tag{27}$$
 
@@ -280,17 +294,28 @@ by the same argument, with a mean in place of the softmax weighted sum.
 
 ## 8. Critic ensemble uncertainty and leader election
 
-$$\nu_i = \sqrt{\frac{1}{M}\sum_{m=1}^{M}\big(Q_{\phi,m}(b_i, \mu_\theta(b_i)) - \bar{Q}\big)^2}, \quad \bar{Q} = \frac{1}{M}\sum_m Q_{\phi,m}(b_i, \mu_\theta(b_i)); \qquad \ell_i = \arg\min_{j \in \{i\} \cup \mathcal{N}_i} \nu_j \tag{28}$$
+$$\nu_i = \sqrt{\frac{1}{M}\sum_{m=1}^{M}\big(Q_{\phi,m}(b_i, \mu_\theta(b_i)) - \bar{Q}\big)^2}; \qquad U_i[j] = \begin{cases}\nu_i & j = i \ \ \text{(fresh)} \\ \nu_{j, t_j} & j \ne i \ \ (L_j \text{ steps stale})\end{cases}; \qquad \ell_i = \arg\min_{j \in \{i\} \cup \mathcal{N}_i} U_i[j] \tag{28}$$
 
 The heads share a target and differ by initialization, so they agree where the buffer constrains the value and disagree where
 it does not, which makes the spread an uncertainty estimate that costs no extra network. The evaluation point is the mean
 action and not a sample, so $\nu_i$ measures uncertainty about the belief and not the randomness of the policy.
 
-Election happens inside robot $i$, from robot $i$'s own message table, and two facts follow that the design accepts. Robot $i$
-elects on confidence that is $L_j$ steps old, because $\nu_j$ is stamped at the send time of equation (24). And
-$\ell_i \ne \ell_{i'}$ is possible, because two robots hold different message sets, so the team can briefly disagree about who
-leads; the design measures the disagreement rate rather than adding a consensus protocol that needs a round trip the staleness
-model does not have.
+Every robot elects from its own uncertainty row $U_i$, which holds its own entry fresh and every teammate's entry as of the
+message of equation (24). There is no consensus step, so the rows disagree, and `leader` mode resolves each robot's action
+from its own row alone.
+
+| Condition on robot $i$ | What robot $i$ does |
+|---|---|
+| $\ell_i = i$ | runs one joint search over $NK$ sampled candidates per node and broadcasts the joint action |
+| $\ell_i = l \ne i$ and $\ell_l = l$ | executes slot $i$ of leader $l$'s broadcast |
+| $\ell_i = l \ne i$ and $\ell_l \ne l$ | falls back to its own mean action $\mu_\theta(b_i)$ |
+
+Two failure cases follow from the staleness and the design accepts both. No robot in an env elects itself, in which case
+nobody searches and the whole team runs the depth $-1$ policy for that step. Or a robot elects itself and broadcasts while no
+other robot elected it, in which case the search cost is paid and nobody follows. The evaluation reports the share of robots
+following a leader and the number of searches per env, so both cases are visible, along with the leader disagreement rate
+$\frac{1}{K}\sum_i \mathbb{1}[\ell_i \ne \ell^{\text{fresh}}]$, where $\ell^{\text{fresh}}$ is the election under every
+robot's current uncertainty. A consensus protocol would need a round trip that the staleness model does not have.
 
 ## 9. Test time search
 
@@ -300,51 +325,59 @@ This is design section 7, written as an algorithm. It runs batched over every en
 
 ```
 procedure SEARCH(robot i, env e, depth D, width N, beam J, discount beta)
-  z[i] <- e_i                                       # fresh own encoding
-  for j in N_i: z[j] <- ROLL_FORWARD(m_j, L_j)      # equation (25)
-  b    <- FUSE(z[i], {z[j]})                        # equations (26), (27)
+  z[i] <- e_i                                        # fresh own encoding
+  for j in N_i: z[j] <- ROLL_FORWARD(m_j, L_j)       # equation (25)
+  b    <- FUSE(z[i], {z[j]})                         # equations (26), (27)
 
-  A_root <- { a1..aN ~ pi(. | b) } U { mu(b) }      # N + 1 candidates
-  beam   <- { path(a_root=a, state=(z,b), score_num=Q_bar(b,a)) for a in A_root }
+  paths <- empty                                     # root: score before any roll
+  for a_own in { a1..aN ~ pi(. | b) } U { mu(b) }:   # N + 1 root candidates
+      for j in N_i: a[j] <- mu( FUSE(z[j], others) ) # imagined teammate actions
+      paths.append( path(a_root=a_own, z=z, b=b, a_joint=(a_own,{a[j]}),
+                         score=Q_bar(b, a_own)) )    # Q_0, no model call
 
   for d = 1 .. D:
-      children <- empty
-      for p in beam:
-          for a_own in CANDIDATES(p, d):            # N+1 at d=1, else N per path
-              for j in N_i:                         # imagine every teammate action
-                  a[j] <- mu( FUSE(p.z[j], p.z others) )
-              a_joint <- (a_own, {a[j]})
-              z'[i] <- f(p.z[i], a_own, c(a_joint)) # roll EVERY estimate one step
-              for j in N_i: z'[j] <- f(p.z[j], a[j], c(a_joint))
-              b'    <- FUSE(z'[i], {z'[j]})
-              children.append( path(a_root=p.a_root, state=(z',b'),
-                                    score_num=p.score_num + beta^d * Q_bar(b',mu(b'))) )
-      beam <- TOP_J(children, key=score_num)        # prune to J paths
+      for p in paths:                                # roll EVERY surviving path
+          for k in {i} U N_i:
+              p.z[k] <- f(p.z[k], p.a_joint[k], c(p.a_joint))
+          p.b     <- FUSE(p.z[i], {p.z[j]})          # age features unchanged
+          p.score <- p.score + beta^d * Q_bar(p.b, mu(p.b))
+      paths <- TOP_J(paths, key=score)               # prune AFTER scoring
+      if d = D: break
+      children <- empty                              # expand every survivor
+      for p in paths:
+          for a_own in { a1..aN ~ pi(. | p.b) } U { mu(p.b) }:
+              for j in N_i: a[j] <- mu( FUSE(p.z[j], others) )
+              children.append( copy of p with a_joint=(a_own,{a[j]}) )
+      paths <- children
 
   for a in A_root:
-      S(a) <- max over surviving paths with a_root = a of
-              score_num / sum_{d=0..D} beta^d
+      S(a) <- max{ p.score : p.a_root = a } / sum_{d=0..D} beta^d
   return argmax_a S(a)
 ```
+
+The order is roll, score, prune, expand. Every candidate is rolled before it is scored, so no path is discarded on a score
+the world model never checked, and the beam keeps $J$ paths only after each level is scored. Expansion adds the mean joint
+action plus $N$ sampled own actions, so every survivor has $N+1$ children at every level and not $N$.
 
 The teammate imagination step is the piece with no prior implementation. In QWM the imagined next state depends only on the
 action under search, but here the payload obeys the joint action by equation (6), so robot $i$ must imagine the other $K-1$
 actions before it can query the model at all.
 
 Rolling every teammate estimate forward with the same joint action keeps the H2 experiment clean. A teammate estimate at depth
-3 has received exactly as much new information as it had at the root, which is none, so its staleness is identical at every
-level and the axis $L$ means one thing across the whole grid. Without this step the design would have to say what a teammate
+3 has received exactly as much new information as it had at the root, which is none, and its age feature in equation (26)
+stays at the root value, so its staleness is identical at every level and the axis $L$ means one thing across the whole grid. Without this step the design would have to say what a teammate
 knows about the searcher's imagined future, and there is no correct answer to that question.
 
 ### 9.2 The score and the beam
 
-$$S(a) = \frac{\sum_{d=0}^{D}\beta^d Q_d}{\sum_{d=0}^{D}\beta^d}, \quad Q_0 = \bar{Q}(b,a), \quad Q_d = \bar{Q}\big(b^{(d)}, \mu_\theta(b^{(d)})\big); \qquad \text{score\_num}^{(d')}(a) = \sum_{d=0}^{d'}\beta^d Q_d \tag{29}$$
+$$S(a) = \frac{Q_0 + \sum_{d=1}^{D}\beta^d Q_d}{\sum_{d=0}^{D}\beta^d}, \quad Q_0 = \bar{Q}(b, a), \quad Q_d = \bar{Q}\big(b^{(d)}, \mu_\theta(b^{(d)})\big); \qquad \text{score}^{(d')}(a) = Q_0 + \sum_{d=1}^{d'}\beta^d Q_d \tag{29}$$
 
-The numerator mixes what the critic says now with what the critic says at imagined states, the denominator keeps $S$ on the
-scale of a $Q$ value, and $\beta$ is a second discount that damps trust in the model rather than reward, with default 0.5 and a sweep over 0.1,
-0.3, 0.5, 0.7, 0.9, and 1.0. The beam ranks
-partial paths by the numerator alone, which is valid because the denominator is the same constant for every path at a given
-level, and pruning to $J$ paths is what stops the tree growing as $(N+1)N^{D-1}$.
+$Q_0$ reads the critic at the real root belief with the candidate action, and each $Q_d$ reads it at the rolled belief with
+the policy mean there, so the numerator mixes what the critic says now with what the critic says at imagined states while the
+denominator keeps $S$ on the scale of a $Q$ value. The beam ranks partial paths by $\text{score}^{(d')}$, which is valid
+because the denominator is the same constant for every path at a given level, and pruning to $J$ after scoring is what stops
+the tree growing as $(N+1)^{D}$. Here $\beta$ is a second discount that damps trust in the model rather than reward, with
+default 0.5 and a sweep over 0.0, 0.1, 0.3, 0.5, 0.7, 0.9, and 1.0.
 
 $$D = 0 \quad \text{or} \quad \beta = 0 \qquad \implies \qquad S(a) = \frac{\beta^0 Q_0}{\beta^0} = \bar{Q}(b,a) \qquad \implies \qquad \text{zero calls to } f_\psi \tag{30}$$
 
@@ -366,18 +399,20 @@ snapshot.
 
 ### 9.3 Compute per decision step
 
-$$n(D) = \begin{cases}0 & D = 0 \\ (N+1) + (D-1)JN & D \ge 1\end{cases}; \quad \text{per robot per env: } K n(D) \text{ model calls}, \ K n(D) \text{ fusions}, \ M n(D) \text{ critic heads} \tag{31}$$
+$$p(D) = \begin{cases}0 & D = 0 \\ (N+1)\big[1 + (D-1)J\big] & D \ge 1\end{cases}; \qquad \text{per robot per env: } K\,p(D) \text{ model calls}, \quad (N+1) + p(D) \text{ critic ensemble reads} \tag{31}$$
 
-Level 1 expands all $N+1$ root candidates and every later level expands $J$ paths into $N$ children each, and at each node
-robot $i$ rolls all $K$ estimates forward, fuses $K$ beliefs, and runs the policy on $K-1$ teammate estimates. The root
-forward correction adds $L(K-1)$ model calls per robot.
+$p(D)$ counts the paths that are rolled: $N+1$ at depth 1, then $J(N+1)$ at every deeper level, because the beam holds $J$
+survivors and each expands into $N+1$ children. Each rolled path advances all $K$ slots, which gives $(N+1)K$ model calls at
+depth 1 and $J(N+1)K$ at each deeper level, matching design section 7. The root scoring adds $N+1$ critic reads with no model
+call, and the root forward correction of equation (25) adds $L(K-1)$ model calls per robot.
 
-$$\text{model calls}_{\text{indep}} = K^2 n(D); \qquad n_{\text{leader}}(D) = (NK+1) + (D-1)JNK, \qquad \text{model calls}_{\text{leader}} = K\,n_{\text{leader}}(D) \tag{32}$$
+$$\text{model calls}_{\text{indep}} = K^2 p(D), \quad \text{model calls}_{\text{leader}} = K\,p_{\text{leader}}(D), \quad p_{\text{leader}}(D) = (NK+1)\big[1 + (D-1)J\big] \quad \implies \quad \frac{\text{leader}}{\text{indep}} = \frac{NK+1}{K(N+1)} = \frac{NK+1}{NK+K} \tag{32}$$
 
 In `independent` mode all $K$ robots search, so the cost is quadratic in team size, which is the overhead QWM names as a
-limitation multiplied by $K$. With $K=6, N=8, J=4, D=2$ the independent count is $36 \times 41 = 1476$ model calls per
-environment per step against $6 \times 241 = 1446$ for `leader`, within 3 percent, and that match is what makes H4 a fair
-comparison; report measured wall clock too, because equation (32) counts calls and not kernel launches.
+limitation multiplied by $K$. Because every candidate is rolled, one joint search with $NK$ samples per node costs the same as
+$K$ independent searches up to the $+1$ and $+K$ terms, and the ratio is independent of depth. With $K=6, N=8, J=4$ it is
+$49/54 = 0.907$ at every depth, and at $D = 2$ the counts are $36 \times 45 = 1620$ model calls per environment per step
+against $6 \times 245 = 1470$; report measured wall clock too, because equation (32) counts calls and not kernel launches.
 
 ## 10. The two error sources in the tree
 
@@ -421,8 +456,8 @@ A gap in beliefs becomes a gap in actions through the shared policy, with $\kapp
 $$\delta_{d+1} \le \lambda\delta_d + \varepsilon_1 + \kappa\bar{\Delta}^{(d)}, \quad \kappa = \kappa_c \mathrm{Lip}(h_\psi)\kappa_\pi; \qquad \bar{\Delta}^{(d)} \ge \bar{\Delta}^{(0)}(L) \ \implies\ \delta_d \le \big(\varepsilon_1 + \kappa\bar{\Delta}^{(0)}(L)\big)\sum_{m=0}^{d-1}\lambda^m \tag{37}$$
 
 Each step of the tree now injects two errors and not one, with $\bar{\Delta}^{(d)}$ the mean teammate gap at depth $d$. Robot
-$i$'s estimate of a teammate receives no new information at any depth, by design, so the teammate gap does not shrink as the
-tree deepens and the conservative reading holds. Read the right side against equation (34): the two have the same shape in
+$i$'s estimate of a teammate receives no new information at any depth and its age feature stays at the root value, by design,
+so the teammate gap does not shrink as the tree deepens and the conservative reading holds. Read the right side against equation (34): the two have the same shape in
 $d$ and differ only in the per step injection, because QWM injects $\varepsilon_1$ and this project injects
 $\varepsilon_1 + \kappa\bar{\Delta}^{(0)}(L)$, a coefficient that grows with $L$ by equation (35).
 
@@ -494,21 +529,23 @@ and the depth $-1$ row anchors the whole grid against the plain policy.
 | Item | Statement |
 |---|---|
 | Quantity | $\beta^*(L) = \arg\max_\beta \hat{p}(\beta, L)$ at fixed $D$ |
-| Comparison | $\beta^*(L)$ across $L \in \{0,1,2,4\}$, with $\beta \in \{0.1, 0.3, 0.5, 0.7, 0.9, 1.0\}$ |
+| Comparison | $\beta^*(L)$ across $L \in \{0,1,2,4\}$, with $\beta \in \{0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0\}$ |
 | Script | `scripts/sweep.py --grid beta x lag`, output `results/h3.json` |
 | Confirms | $\beta^*(L)$ non increasing in $L$, and $\beta^*(L_{\max}) < \beta^*(0)$ |
 | Refutes | $\beta^*(L)$ flat or increasing with $L$ |
 
 This is equation (39) read off a grid. Run one check first: the $\beta = 0$ column must reproduce the $D = 0$ column of H2 to
 within $2\,\mathrm{se}$, by equation (30). If it does not, the search code has a defect and neither grid is
-interpretable. The sweep does not include $\beta = 0$, so run that check as a separate evaluation.
+interpretable. The sweep includes $\beta = 0$ as its consistency cell, so the check is a cell of the grid and not a separate
+run, and by equation (30) that cell makes zero world model calls.
 
 ### 11.4 H4. Leader elected search beats independent search at matched compute
 
 | Item | Statement |
 |---|---|
 | Quantity | $\hat{p}$ under `independent`, `leader`, and `round_robin` |
-| Compute match | model calls of equation (32) within 10 percent, plus measured wall clock per decision step |
+| Compute match | equation (32) gives a ratio of $0.907$ at every depth, plus measured wall clock per decision step |
+| Also report | leader disagreement rate, searches per env, share of robots following a leader |
 | Comparison | $\hat{d}_1 = \hat{p}(\text{leader}) - \hat{p}(\text{independent})$, $\hat{d}_2 = \hat{p}(\text{leader}) - \hat{p}(\text{round\_robin})$ |
 | Script | `scripts/sweep.py --leader`, output `results/h4.json` |
 | Confirms | $\hat{d}_1 > 2\,\mathrm{se}(\hat{d}_1)$ **and** $\hat{d}_2 > 2\,\mathrm{se}(\hat{d}_2)$ |
@@ -517,19 +554,19 @@ interpretable. The sweep does not include $\beta = 0$, so run that check as a se
 Both differences must hold, because they answer different questions: $\hat{d}_1$ asks whether concentrating the compute budget
 in one searcher beats spreading it, and $\hat{d}_2$ asks whether the uncertainty election of equation (28) beats picking the
 leader by $t \bmod K$. A result with $\hat{d}_1 > 0$ and $\hat{d}_2 \approx 0$ says the joint candidate search does the work
-and the election contributes nothing, which is a weaker claim than H4. Report the leader disagreement rate of section 8
-alongside these numbers, because a high rate is the mechanism that would break `leader` mode.
+and the election contributes nothing, which is a weaker claim than H4.
+
+The three extra metrics exist because election runs on stale rows and can fail in two ways, by the table in section 8. When no
+robot in an env elects itself, the searches per env drop to zero and that env runs the depth $-1$ policy for the step. When a
+robot elects itself and no other robot elected it, the share following a leader drops while the search cost is still paid.
+Read $\hat{d}_1$ against these two numbers, because a `leader` arm that loses while few robots follow a leader is a failure of
+the election and not of the joint search.
 
 ## 12. Open questions
 
-The design fixes every constant this document uses. Two items remain.
-
-1. **The no search arm of H1.** Design section 7 names depth $-1$, the mean action, as the no search baseline, while the
-   protocol table of design section 9 runs H1 as `--depth 0` against `--depth 2`. The two answer different questions, by the
-   table in section 9.2. This document reports both arms and does not choose between them.
-2. **The normalization of the decoder target.** Equation (23) multiplies by $A = 5.0$ m to report metres. That is correct only
-   if the decoder target of design section 5 divides the relative payload position by $A$, as the observation of design
-   section 3.5 does. Design section 5 does not say.
+The design fixes every constant this document uses. The H1 protocol runs depth $-1$, $0$, and $2$
+at lag 1, so both no search arms are reported. The decoder target divides the relative payload
+position by $A$, so equation (23) reports metres. No item remains open.
 
 ## 13. References
 
@@ -537,4 +574,5 @@ The design fixes every constant this document uses. Two items remain.
 - Haarnoja, T., Zhou, A., Abbeel, P., and Levine, S. (2018). *Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor*. arXiv:1801.01290. Source for equations (11) to (16).
 - Dong, Y. et al. (2026). *Q-learning with World Models (QWM)*. arXiv:2608.17163. Source for the search of section 9 and the depth ablation that H2 extends.
 - Vaswani, A. et al. (2017). *Attention Is All You Need*. arXiv:1706.03762. Source for equations (26) and (27).
+- Fujimoto, S. and Gu, S. S. (2021). *A Minimalist Approach to Offline Reinforcement Learning*. arXiv:2106.06860. Source for the behavior cloning term in equation (15).
 - Oliehoek, F. A. and Amato, C. (2016). *A Concise Introduction to Decentralized POMDPs*. Springer. Source for equation (1).
