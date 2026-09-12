@@ -141,8 +141,9 @@ Per env timelines so that a stale message at `t - L` can be read from the buffer
 
 Stored per row `(env, t)`: `local [K,16]`, `full [K, F]`, `comm [K,K]`, `action [K,3]`, `reward`,
 `terminated`, `truncated`, `next_local [K,16]`, `next_full [K,F]`, `next_comm [K,K]`, `ep_start`
-(the row index where the episode began), `state` decoder targets `[K, 6]`
-(payload relative pose `dx, dy, cos, sin` and own latched flag and payload visible flag).
+(the row index where the episode began), `target` decoder targets `[K, 6]`: the payload pose
+relative to the robot `(dx / A, dy / A, cos theta, sin theta)`, the own latched flag, and the
+payload visible flag. The decoder reports position error in metres by multiplying by `A`.
 
 Sampling returns a batch of row indices `(env, t)` plus `(env, max(t - L, ep_start))` for any
 requested lag `L`. The offline buffer uses the same class. RLPD sampling draws half of each batch
@@ -272,7 +273,7 @@ at least 3 evaluation batches, with the standard error.
 | Offline buffer | `scripts/collect_offline.py` | `data/offline.pt` (ignored by git) |
 | Train centralized and decentralized | `scripts/train.py --obs full`, `--obs belief` | `results/train_*.jsonl`, `checkpoints/*.pt` |
 | World model error | `scripts/world_model_error.py` | `results/wm_error.json` |
-| H1 | `scripts/evaluate.py --depth 0` and `--depth 2` | `results/h1.json` |
+| H1 | `scripts/evaluate.py --depth -1`, `--depth 0`, and `--depth 2` at lag 1 | `results/h1.json` |
 | H2 | `scripts/sweep.py --which h2` | `results/h2.json` |
 | H3 | `scripts/sweep.py --which h3` | `results/h3.json` |
 | H4 | `scripts/sweep.py --which h4` | `results/h4.json` |

@@ -1,0 +1,535 @@
+# Mathematics of the system
+
+This document states every equation the project uses and the reason each one exists.
+
+It builds on [concepts.md](../concepts.md), which explains the ideas in plain language, and on [docs/design.md](design.md),
+which fixes every constant. The design is the source of truth. Where the proposal and the design differ, the design wins, and
+section 8 of the design gives the reason.
+
+Every displayed equation carries a number, and later documents cite these numbers. Section 12 lists the two questions the
+design still leaves open. This document decides neither of them.
+
+## 1. Notation
+
+| Symbol | Meaning | Value in the design |
+|---|---|---|
+| $E$ | Parallel environments | 512 train, 256 evaluate |
+| $K$ | Robots on the team | 6 |
+| $i, j, k$ | Robot indices. $i$ searches, $j$ is a teammate | |
+| $\tau_k$ | Type of robot $k$: pusher, gripper, or scout | one hot, length 3 |
+| $t$, $T$, $\Delta t$ | Step index, episode length, time step | $T = 150$, $\Delta t = 0.1$ s |
+| $s_t$ | Full environment state | equation (1) |
+| $o_{k,t}$ | Local observation of robot $k$ | $\mathbb{R}^{16}$ |
+| $o^{\text{full}}_{k,t}$ | Centralized observation, oracle baseline only | $\mathbb{R}^{16+4+3K}$ |
+| $\mathbf{o}_t$ | Joint observation $(o_{1,t}, \dots, o_{K,t})$ | |
+| $a_{k,t}$ | Action of robot $k$, written $(v_x, v_y, u)$ | $[-1,1]^3$ |
+| $\mathbf{a}_t$ | Joint action $(a_{1,t}, \dots, a_{K,t})$ | $[-1,1]^{3K}$ |
+| $e_{k,t}$ | Fresh latent from robot $k$'s own observation | $\mathbb{R}^{64}$ |
+| $\hat{z}_j$ | Robot $i$'s rolled forward estimate of teammate $j$ | $\mathbb{R}^{64}$ |
+| $b_{k,t}$ | Fused belief of robot $k$ | $\mathbb{R}^{64}$ |
+| $r_t$ | Shared team reward | 1 on success, else 0 |
+| $\gamma$ | Reward discount | 0.99 |
+| $\alpha$, $\bar{\mathcal{H}}$ | Entropy temperature and target entropy | $\alpha$ learned, $\bar{\mathcal{H}} = -3$ |
+| $\theta, \phi, \bar\phi, \psi$ | Actor, critic, target critic, world model parameters | Polyak rate $\rho = 0.005$ |
+| $M$ | Critic ensemble size | 10 |
+| $B$, $G$ | Batch rows, updates per batched env step | 256, 4 |
+| $L$, $L_{\max}$ | Staleness of a teammate message, and the cap on it | $L_{\text{train}} = 1$, swept 0, 1, 2, 4; $L_{\max} = 8$ |
+| $D$, $d$ | Search depth, and the depth index $0 \le d \le D$ | swept $-1$, 0, 1, 2, 4, 6 |
+| $N$, $J$ | Candidates per node, beam width | 8, 4 |
+| $\beta$ | Tree search discount | 0.5 default, swept 0.1 to 1.0 |
+| $\nu_i$ | Scalar uncertainty of robot $i$ | equation (28) |
+| $A$, $h_x$, $h_y$, $R_c$ | Arena half size, payload half extents, comm radius | 5.0, 0.8, 0.4, 4.0 m |
+
+## 2. The task as a Dec POMDP
+
+### 2.1 Tuple, state, observation, reward
+
+$$\mathcal{M} = \langle K, \mathcal{S}, \{\mathcal{A}_k\}, P, R, \{\Omega_k\}, O, \gamma, T \rangle, \qquad s_t = \big(p_t,\ g,\ \{x_{k,t}\},\ \{\ell_{k,t}\},\ \{q_k\}_{k \in \text{grip}},\ t\big) \tag{1}$$
+
+This is the form of Oliehoek and Amato (2016), with $p_t$ the payload pose, $g$ the goal pose, $x_{k,t}$ a robot position,
+$\ell_{k,t}$ a latch flag, and $q_k$ a latch anchor in the payload frame. The anchor is state because the design fixes the
+latch point in the payload frame at the moment the gripper latches.
+
+$$o_{k,t} = O_k(s_t) \in \mathbb{R}^{16}, \qquad c_{ij,t} = \mathbb{1}\big[\, i \ne j,\ \|x_{i,t} - x_{j,t}\| < R_c,\ \neg\,\text{occluded}(i,j,s_t)\,\big] \tag{2}$$
+
+The observation map is deterministic and lossy, and design section 3.5 lists its 16 fields. The payload enters the observation
+only inside the sensing range of the type, 2.0 m for a pusher and a gripper and 8.0 m for a scout, and $c_{ij,t}$ decides which
+messages robot $i$ receives.
+
+$$R(s_t, \mathbf{a}_t) = \mathbb{1}\big[\|(p_x,p_y) - (g_x,g_y)\| < 0.3 \ \wedge\ |\mathrm{wrap}(p_\theta - g_\theta)| < 0.2\big], \qquad \max_\pi\ \mathbb{E}\Big[\textstyle\sum_t \gamma^t R(s_t, \mathbf{a}_t)\Big] \tag{3}$$
+
+The reward is sparse and shared, so one number arrives on the success step and the episode terminates. Every robot runs the
+same weights $\pi$ on its own belief, so the maximization is over one parameter set and not $K$ sets. The
+design sets $\gamma = 0.99$.
+
+### 2.2 Payload dynamics
+
+Design section 3.3 fixes a quasi static model with a Coulomb style threshold. Write $n_\ell$ for the number of latched
+grippers, $\Pi(x)$ for the closest payload boundary point to $x$, and $\hat{n}(x)$ for the inward unit normal there.
+
+$$F_k = \begin{cases} u_k F_p \hat{n}(x_k) & \tau_k = \text{pusher},\ \|x_k - \Pi(x_k)\| \le d_c,\ u_k > 0 \\ F_g\,\mathrm{clip}(v_{x,k}, v_{y,k}) & \tau_k = \text{gripper, latched} \\ 0 & \text{otherwise}\end{cases} \qquad F_p = 1.0,\ F_g = 0.3,\ d_c = 0.25 \tag{4}$$
+
+A pusher cannot choose a direction, because it pushes along the inward normal. A latched gripper chooses any direction but is
+weak, with $\|F_k\| \le F_g\sqrt{2} \approx 0.424$ N.
+
+$$F_s(n_\ell) = \max\big(F_0 - \Delta F\, n_\ell,\ F_{\min}\big), \qquad \tau_s(n_\ell) = 0.5\,F_s(n_\ell)\,h_x, \qquad F_0 = 3.5,\ \Delta F = 1.0,\ F_{\min} = 0.5 \tag{5}$$
+
+Every latched gripper lowers the translation threshold by 1.0 N, so a gripper is a threshold reducer first and a force source
+second. The rotation threshold follows the translation threshold, so one latch unlocks both by the same factor.
+
+$$F_{\text{net}} = \sum_k F_k, \quad \tau_{\text{net}} = \sum_k (r_k \times F_k), \quad v = \frac{\max(\|F_{\text{net}}\| - F_s, 0)}{c_t}\frac{F_{\text{net}}}{\|F_{\text{net}}\|}, \quad \omega = \frac{\max(|\tau_{\text{net}}| - \tau_s, 0)}{c_r}\mathrm{sign}(\tau_{\text{net}}), \quad p_{t+1} = p_t + (v_x, v_y, \omega)\Delta t \tag{6}$$
+
+Here $r_k = \Pi(x_k) - (p_x, p_y)$ and $c_t = c_r = 2.0$, and the payload responds to the sum of forces and the sum of moments,
+which is why the world model takes the joint action. The $\max(\cdot, 0)$ is the whole design: below the threshold the payload
+does not move and the reward stays zero, so the task is hard because the team must cross a threshold together.
+
+### 2.3 The three friction facts
+
+Each follows from equations (4) to (6) by arithmetic on the design's constants.
+
+**Fact 1. Pushers alone fail.** Three pushers latch nothing, so $n_\ell = 0$ and $F_s = 3.5$, and each contributes at most
+$1.0$ N along a unit normal.
+
+$$\|F_{\text{net}}\| \le 3 \times 1.0 = 3.0 \ <\ 3.5 = F_s(0) \quad \implies \quad v = 0 \tag{7}$$
+
+The bound is tight, because three pushers reach 3.0 N exactly and still fall 0.5 N short. A fourth pusher would break the task
+design, which is why the default team has three.
+
+**Fact 2. Grippers alone fail.** Two latched grippers give $F_s = 3.5 - 2.0 = 1.5$, and each contributes at most $0.424$ N.
+
+$$\|F_{\text{net}}\| \le 2 \times 0.424 = 0.849 \ <\ 1.5 = F_s(2) \quad \implies \quad v = 0 \tag{8}$$
+
+The grippers lower the threshold to 1.5 N and then cannot reach it. The design writes this case as $0.6 < 1.5$ using unit
+command magnitude, and equation (8) uses the maximum magnitude, so the conclusion survives the worst case.
+
+**Fact 3. The mixed team succeeds.** Two latched grippers plus two pushers, with $F_s(2) = 1.5$.
+
+$$\|F_{\text{net}}\| = 2 \times 1.0 + 2 \times 0.3 = 2.6 \ >\ 1.5, \qquad v = \frac{2.6 - 1.5}{2.0} = 0.55\ \text{m/s} \tag{9}$$
+
+The pushers alone already clear the reduced threshold, since $2.0 > 1.5$. Each gripper contributes 1.0 N of threshold
+reduction and only 0.3 N of force, so the reduction is worth more than three times the force, and that ratio is the
+quantitative form of "no type finishes alone".
+
+**One robot of any type fails.** A pusher gives $1.0 < 3.5$, a gripper gives $n_\ell = 1$ and $0.424 < 2.5$, and a scout
+applies no force. This is the week 1 negative control, and it holds by construction, so it confirms the task design only.
+
+**Feasibility of the full team.** Three pushers and two latched grippers give $F_s(2) = 1.5$ and $\tau_s(2) = 0.6$ N m.
+
+$$v = \frac{3.6 - 1.5}{2.0} = 1.05\ \text{m/s}, \qquad |\tau_{\text{net}}| \le 3(1.0 \times 0.5 h_x) + 2\big(F_g\sqrt{h_x^2 + h_y^2}\big) = 1.737, \qquad \omega = \frac{1.737 - 0.6}{2.0} = 0.568\ \text{rad/s} \tag{10}$$
+
+Translation crosses the 2.5 m to 4.0 m gap in 24 to 39 of the 150 steps, so it has a wide margin. Rotation is tighter, and the
+worst case really occurs: design section 3.1 samples the goal orientation up to 90 degrees from the start orientation, while
+two pushers alone give $\omega = 0.1$ rad/s and need about 157 steps for that angle, which exceeds the 150 step episode. The
+team must commit most of its pushers to torque when the angle error is large, and that is why design section 4 makes the
+scripted controller spread the pushers along the face near the goal.
+
+## 3. Soft actor critic
+
+RLPD is SAC with three changes. This section states SAC and section 4 states the changes. The critic is per robot on its own
+belief $b$ and its own action $a$, as design section 8 fixes, so teammates are part of the environment for the critic.
+
+$$J(\pi) = \mathbb{E}_\pi\Big[\textstyle\sum_t \gamma^t\big(r_t + \alpha\,\mathcal{H}(\pi(\cdot \mid b_t))\big)\Big], \qquad \mathcal{H}(\pi(\cdot \mid b)) = -\mathbb{E}_{a \sim \pi}\big[\log \pi(a \mid b)\big] \tag{11}$$
+
+The entropy term pays the policy to stay random. Under a sparse reward the policy gets no gradient from the reward until it
+succeeds once, so without this term it collapses early and never finds the goal.
+
+$$\mathcal{T}^\pi Q(b,a) = r + \gamma\,\mathbb{E}_{b', a' \sim \pi}\big[Q(b',a') - \alpha \log \pi(a' \mid b')\big], \qquad y = r + \gamma(1 - \text{terminated})\big[\tilde{Q}_{\bar\phi}(b',a') - \alpha \log \pi_\theta(a' \mid b')\big] \tag{12}$$
+
+The soft backup is the ordinary Bellman operator plus the entropy of the next action, and the bonus must enter the target or
+the critic learns the value of a policy the actor is not running. Only `terminated` zeroes the bootstrap, because a truncated
+episode still has a future, and equation (19) defines $\tilde{Q}_{\bar\phi}$.
+
+$$\mathcal{L}_Q(\phi) = \frac{1}{M}\sum_{m=1}^{M}\mathbb{E}_{\mathcal{D}}\Big[\big(Q_{\phi,m}(b,a) - y\big)^2\Big] \tag{13}$$
+
+Every head trains on the same target and differs only by its initialization. Their disagreement therefore measures how much
+the data constrains the value at that input, which is what equation (28) needs.
+
+$$a_\theta(b,\xi) = \tanh(u),\ \ u = \mu_\theta(b) + \sigma_\theta(b)\odot\xi,\ \ \xi \sim \mathcal{N}(0,I); \qquad \log \pi(a \mid b) = \log \mathcal{N}(u; \mu_\theta, \sigma_\theta) - \sum_{n=1}^{3}\log\big(1 - \tanh^2 u_n\big) \tag{14}$$
+
+The reparameterization moves the randomness into $\xi$ so gradient passes through $\mu$ and $\sigma$, and the $\tanh$ keeps
+the action in $[-1,1]^3$. The correction term is $\log|\det \partial a/\partial u|$ for a diagonal Jacobian with entries
+$1 - \tanh^2 u_n$; without it the entropy belongs to the pre squash Gaussian, the temperature loss chases the wrong number,
+and $\alpha$ drifts. Use $\log(1 - \tanh^2 u) = 2(\log 2 - u - \mathrm{softplus}(-2u))$, because $1 - \tanh^2 u$ underflows
+for $|u| > 10$.
+
+$$\mathcal{L}_\pi(\theta) = \mathbb{E}_{b,\xi}\left[\alpha \log \pi_\theta\big(a_\theta(b,\xi) \mid b\big) - \frac{1}{M}\sum_{m=1}^{M} Q_{\phi,m}\big(b, a_\theta(b,\xi)\big)\right] \tag{15}$$
+
+Design section 6.4 fixes the actor objective to the mean over all $M$ heads and not a minimum. The actor should climb the
+ensemble's best estimate, and the pessimism belongs in the target, where a bootstrap can compound.
+
+$$\mathcal{L}_\alpha = \mathbb{E}_{b, a \sim \pi_\theta}\big[-\alpha\big(\log \pi_\theta(a \mid b) + \bar{\mathcal{H}}\big)\big], \qquad \bar{\mathcal{H}} = -3 \tag{16}$$
+
+The gradient is $-(\log \pi + \bar{\mathcal{H}})$, so when the policy entropy falls below $-\bar{\mathcal{H}}$ the temperature
+rises and pays the policy to spread out again. The design sets $\bar{\mathcal{H}} = -3$, the standard choice of minus the
+action dimension.
+
+## 4. RLPD
+
+RLPD is Ball et al. (2023). It makes three changes to SAC and adds a second buffer.
+
+$$\mathcal{D} = \tfrac12 \mathcal{D}_{\text{off}} + \tfrac12 \mathcal{D}_{\text{on}}, \qquad \mathbb{E}_{\mathcal{D}}[f] = \tfrac12 \mathbb{E}_{\mathcal{D}_{\text{off}}}[f] + \tfrac12 \mathbb{E}_{\mathcal{D}_{\text{on}}}[f] \tag{17}$$
+
+Symmetric sampling is a fixed mixture over two buffers, and every expectation in section 3 is taken under it. Each update
+draws $B/2 = 128$ rows from each buffer for the whole run, which is what puts a nonzero reward in every batch while the online
+policy still succeeds almost never.
+
+$$\mathrm{LN}(h) = g \odot \hat{h} + \beta_{\text{LN}}, \quad \hat{h}_n = \frac{h_n - \bar{h}}{\sqrt{\mathrm{Var}(h) + \epsilon}} \quad \implies \quad \|\hat{h}\|_2 = \sqrt{H}, \quad \|\mathrm{LN}(h)\|_2 \le \|g\|_\infty\sqrt{H} + \|\beta_{\text{LN}}\|_2 \tag{18}$$
+
+The normalized vector has a fixed norm, because $\frac1H\sum_n \hat{h}_n^2 = 1$ forces $\|\hat{h}\|_2 = \sqrt{H}$ exactly, so
+the layer output is bounded for every input. This is why LayerNorm stops value extrapolation: an unnormalized ReLU MLP is
+positively homogeneous, so a far out of distribution input produces a far out of distribution value, that value becomes a
+target through equation (12), and the critic diverges. The bound is exact, and the claim that it stops divergence at a high
+update ratio is the empirical result of the RLPD paper.
+
+$$\tilde{Q}_{\bar\phi}(b',a') = \min_{m \in \{m_1, m_2\}} Q_{\bar\phi,m}(b',a'), \qquad m_1, m_2 \sim \mathrm{Uniform}\{1,\dots,M\},\ \ m_1 \ne m_2 \tag{19}$$
+
+Design section 6.4 fixes $M = 10$ heads with batched weights, draws two head indices uniformly without replacement, and takes
+their minimum, exactly as in the RLPD paper. The minimum of two draws is a biased low estimate, and that bias is the pessimism
+that counters the overestimation equation (12) would otherwise compound, because the actor chases whatever the critic
+overestimates and the overestimate returns as a target. Ten heads make the amount of pessimism tunable, since a pair drawn
+from a large ensemble is milder than the minimum over all of it, and equation (15) keeps the actor on the mean over all heads
+so the policy climbs the best estimate and not the pessimistic one.
+
+$$\text{rows sampled per collected row} = \frac{G \cdot B}{E} = \frac{4 \times 256}{256} = 4 \tag{20}$$
+
+RLPD quotes an update to data ratio of 20 for a single environment, which is not comparable here because one batched step
+collects 256 transitions at once. Equation (20) is the comparable quantity, and the world model receives the same update count
+as the critic. The design fixes Adam with learning rate $3 \times 10^{-4}$ for every module, $B = 256$ rows per update, and
+the Polyak rate $\rho = 0.005$ on the target critic of equation (12).
+
+## 5. Latent world model
+
+$$f_\psi(z, a_{\text{self}}, c) = z + g_\psi(z, a_{\text{self}}, c), \qquad c_i = \frac{1}{|\mathcal{N}_i|}\sum_{j \in \mathcal{N}_i} h_\psi(\tau_j, a_j) \tag{21}$$
+
+The model outputs a delta and the caller adds it, so the target is small and centred near zero and an untrained model predicts
+"nothing changes". The mean over teammates makes the action context invariant to teammate order and defined for any team size,
+and the type enters $h_\psi$ because the same command numbers produce different forces for a pusher and a gripper.
+
+$$\mathcal{L}_{\text{wm}}(\psi) = \mathbb{E}_{\mathcal{D}}\Big[\big\|f_\psi\big(\mathrm{sg}(e_t), a_t, \mathrm{sg}(c_t)\big) - \mathrm{sg}(e_{t+1})\big\|_2^2\Big], \qquad \mathcal{L}_{\text{dec}} = \mathbb{E}_{\mathcal{D}}\Big[\big\|\mathrm{dec}(\mathrm{sg}(z)) - y_{\text{state}}\big\|_2^2\Big] \tag{22}$$
+
+The stop gradient $\mathrm{sg}$ is `detach()`, and it sits on both sides, so gradient reaches $\psi$ only. Without it the loss
+would push on the encoder, and the encoder has a trivial way to lower it: collapse every latent to a constant, which is
+perfectly predictable and useless for control. The decoder target $y_{\text{state}} \in \mathbb{R}^6$ is the payload pose
+relative to the robot plus the latch and visible flags, and it carries a stop gradient too, so it reads the latent and never
+shapes it.
+
+**Why the stop gradient keeps QWM's claim intact.** The right hand side of the first loss is $e_{t+1}$, the encoding of a
+**real** observation from the buffer, so no imagined quantity appears in any loss. Section 9 uses the model at decision time
+only and discards the tree after the action, so model bias never enters the weights of the policy or the critic. If the model
+is wrong, one action choice is slightly worse and the next step starts from a real observation again.
+
+$$\hat{z}^{(m+1)} = f_\psi\big(\hat{z}^{(m)}, a_{t+m}, c_{t+m}\big),\ \ \hat{z}^{(0)} = e_t; \qquad \mathcal{E}_k = \mathbb{E}\big\|\hat{z}^{(k)} - e_{t+k}\big\|_2^2, \qquad \mathcal{S}_k = A\cdot\mathbb{E}\big\|\mathrm{dec}_{0:2}(\hat{z}^{(k)}) - \mathrm{dec}_{0:2}(e_{t+k})\big\|_2 \tag{23}$$
+
+This is the $k$ step open loop error that week 4 plots, and it uses the **recorded** joint actions from the buffer, which
+isolates model error from policy error. The factor $A = 5.0$ m undoes the arena normalization, so $\mathcal{S}_k$ reports
+metres for the reader while $\mathcal{E}_k$ reports the loss; both are computed on held out transitions.
+
+## 6. Messages, staleness, and forward correction
+
+$$m_j = \big(e_{j,t_j},\ a_{j,t_j},\ \nu_{j,t_j},\ \tau_j\big), \qquad L_j = \min\big(t - t_j,\ L_{\max}\big), \qquad L_{\max} = 8 \tag{24}$$
+
+A message carries the sender's latent, the action the sender took, the sender's uncertainty, and the sender's type. The design
+initializes every table entry at reset with the step 0 encoding, so no entry is ever missing and no code path handles a null
+message. A message sent at $t - L$ arrives when the link of equation (2) is up at $t$ and it survives the dropout draw, a
+robot that hears nothing keeps its older entry, and the cap $L_{\max} = 8$ models a channel with a bounded delay.
+
+$$\hat{z}_j^{(m+1)} = \begin{cases} f_\psi\big(e_{j,t_j},\ a_{j,t_j},\ c^{\text{tab}}_{i}\big) & m = 0 \ \text{(recorded action)} \\[4pt] f_\psi\Big(\hat{z}_j^{(m)},\ \mu_\theta\big(\mathrm{fuse}(\hat{z}_j^{(m)})\big),\ c^{\text{tab}}_{i}\Big) & m \ge 1 \ \text{(imagined action)}\end{cases}, \quad \hat{z}_j = \hat{z}_j^{(L_j)}, \quad c^{\text{tab}}_{i} = \frac{1}{|\mathcal{N}_i| - 1}\sum_{j' \in \mathcal{N}_i \setminus \{j\}} h_\psi\big(\tau_{j'},\ a_{j', t_{j'}}\big) \tag{25}$$
+
+Step one knows what the sender did, because the sender put it in the message. After that robot $i$ guesses with the shared
+policy mean on the **self only belief** of the estimate, which is the fusion of equations (26) and (27) with no teammate entries. The
+context $c^{\text{tab}}_i$ pools the recorded actions already in robot $i$'s own table and stays fixed for the whole roll,
+because the receiver has no newer information and never sees the sender's table. The design states that this is an
+approximation and that the search of section 9 makes the same one, so training and execution share one code path and one
+source of error.
+
+Equation (25) is the project's central quantity. Robot $i$'s estimate of robot $j$ receives no new information after step
+$t_j$, so every step substitutes a guess for an observation, and section 10 turns this into the statement of H2.
+
+## 7. Attention fusion
+
+$$\varphi_i = [e_i; 0; \nu_i; \tau_i], \quad \varphi_j = [\hat{z}_j; L_j; \nu_j; \tau_j]; \qquad q = W_q e_i,\ k_s = W_k \varphi_s,\ v_s = W_v \varphi_s, \qquad w_s = \frac{\exp(\langle q, k_s\rangle/\sqrt{d_k})}{\sum_{s'}\exp(\langle q, k_{s'}\rangle/\sqrt{d_k})}, \qquad \mathrm{att}_i = \sum_{s \in \{i\} \cup \mathcal{N}_i} w_s v_s \tag{26}$$
+
+The age, the uncertainty, and the type ride along with the latent, so the layer can learn to discount an old or an uncertain
+estimate instead of the designer fixing a weight by hand. This is scaled dot product attention from Vaswani et al. (2017) over
+a set of at most 16 vectors, the query comes from the own encoding only, and the design uses 4 heads.
+
+$$b_i = \mathrm{att}_i + \mathrm{MLP}(\mathrm{att}_i) \tag{27}$$
+
+The residual MLP adds a nonlinearity without breaking the identity path. At initialization its output is near zero, so the
+belief starts as the attention output, and the own encoding dominates because $q$ and $k_i$ come from the same vector.
+
+**Claim.** For any bijection $\sigma: \mathcal{N}_i \to \mathcal{N}_i$, reordering the teammate list leaves $b_i$ unchanged.
+
+**Proof.** The query $q$ depends on $e_i$ alone, so it is unchanged. Each key and each value is a function of $\varphi_s$
+alone, with no positional term added, so the pair $(k_s, v_s)$ travels with its element under $\sigma$. The softmax
+denominator is a sum over the set $\{i\} \cup \mathcal{N}_i$ and addition is commutative, so it is unchanged, and each
+numerator depends only on $q$ and $k_s$, so each weight $w_s$ travels with its element. The output $\sum_s w_s v_s$ is again a
+sum over the same set, so $\mathrm{att}_i$ is unchanged, and equation (27) makes $b_i$ a function of $\mathrm{att}_i$ alone.
+For the multi head version the argument applies per head, and the concatenation and output projection act after the sum.
+$\blacksquare$
+
+The load bearing condition is that no positional encoding appears in $\varphi_s$; with one, the values would depend on slot
+index and the proof would fail. The consequence is that nothing in equations (26) and (27) depends on $|\mathcal{N}_i|$, so
+the design trains at $K = 6$ and evaluates at other team sizes and type ratios with no retraining. Equation (21) is invariant
+by the same argument, with a mean in place of the softmax weighted sum.
+
+## 8. Critic ensemble uncertainty and leader election
+
+$$\nu_i = \sqrt{\frac{1}{M}\sum_{m=1}^{M}\big(Q_{\phi,m}(b_i, \mu_\theta(b_i)) - \bar{Q}\big)^2}, \quad \bar{Q} = \frac{1}{M}\sum_m Q_{\phi,m}(b_i, \mu_\theta(b_i)); \qquad \ell_i = \arg\min_{j \in \{i\} \cup \mathcal{N}_i} \nu_j \tag{28}$$
+
+The heads share a target and differ by initialization, so they agree where the buffer constrains the value and disagree where
+it does not, which makes the spread an uncertainty estimate that costs no extra network. The evaluation point is the mean
+action and not a sample, so $\nu_i$ measures uncertainty about the belief and not the randomness of the policy.
+
+Election happens inside robot $i$, from robot $i$'s own message table, and two facts follow that the design accepts. Robot $i$
+elects on confidence that is $L_j$ steps old, because $\nu_j$ is stamped at the send time of equation (24). And
+$\ell_i \ne \ell_{i'}$ is possible, because two robots hold different message sets, so the team can briefly disagree about who
+leads; the design measures the disagreement rate rather than adding a consensus protocol that needs a round trip the staleness
+model does not have.
+
+## 9. Test time search
+
+### 9.1 The procedure
+
+This is design section 7, written as an algorithm. It runs batched over every environment and every searching robot at once.
+
+```
+procedure SEARCH(robot i, env e, depth D, width N, beam J, discount beta)
+  z[i] <- e_i                                       # fresh own encoding
+  for j in N_i: z[j] <- ROLL_FORWARD(m_j, L_j)      # equation (25)
+  b    <- FUSE(z[i], {z[j]})                        # equations (26), (27)
+
+  A_root <- { a1..aN ~ pi(. | b) } U { mu(b) }      # N + 1 candidates
+  beam   <- { path(a_root=a, state=(z,b), score_num=Q_bar(b,a)) for a in A_root }
+
+  for d = 1 .. D:
+      children <- empty
+      for p in beam:
+          for a_own in CANDIDATES(p, d):            # N+1 at d=1, else N per path
+              for j in N_i:                         # imagine every teammate action
+                  a[j] <- mu( FUSE(p.z[j], p.z others) )
+              a_joint <- (a_own, {a[j]})
+              z'[i] <- f(p.z[i], a_own, c(a_joint)) # roll EVERY estimate one step
+              for j in N_i: z'[j] <- f(p.z[j], a[j], c(a_joint))
+              b'    <- FUSE(z'[i], {z'[j]})
+              children.append( path(a_root=p.a_root, state=(z',b'),
+                                    score_num=p.score_num + beta^d * Q_bar(b',mu(b'))) )
+      beam <- TOP_J(children, key=score_num)        # prune to J paths
+
+  for a in A_root:
+      S(a) <- max over surviving paths with a_root = a of
+              score_num / sum_{d=0..D} beta^d
+  return argmax_a S(a)
+```
+
+The teammate imagination step is the piece with no prior implementation. In QWM the imagined next state depends only on the
+action under search, but here the payload obeys the joint action by equation (6), so robot $i$ must imagine the other $K-1$
+actions before it can query the model at all.
+
+Rolling every teammate estimate forward with the same joint action keeps the H2 experiment clean. A teammate estimate at depth
+3 has received exactly as much new information as it had at the root, which is none, so its staleness is identical at every
+level and the axis $L$ means one thing across the whole grid. Without this step the design would have to say what a teammate
+knows about the searcher's imagined future, and there is no correct answer to that question.
+
+### 9.2 The score and the beam
+
+$$S(a) = \frac{\sum_{d=0}^{D}\beta^d Q_d}{\sum_{d=0}^{D}\beta^d}, \quad Q_0 = \bar{Q}(b,a), \quad Q_d = \bar{Q}\big(b^{(d)}, \mu_\theta(b^{(d)})\big); \qquad \text{score\_num}^{(d')}(a) = \sum_{d=0}^{d'}\beta^d Q_d \tag{29}$$
+
+The numerator mixes what the critic says now with what the critic says at imagined states, the denominator keeps $S$ on the
+scale of a $Q$ value, and $\beta$ is a second discount that damps trust in the model rather than reward, with default 0.5 and a sweep over 0.1,
+0.3, 0.5, 0.7, 0.9, and 1.0. The beam ranks
+partial paths by the numerator alone, which is valid because the denominator is the same constant for every path at a given
+level, and pruning to $J$ paths is what stops the tree growing as $(N+1)N^{D-1}$.
+
+$$D = 0 \quad \text{or} \quad \beta = 0 \qquad \implies \qquad S(a) = \frac{\beta^0 Q_0}{\beta^0} = \bar{Q}(b,a) \qquad \implies \qquad \text{zero calls to } f_\psi \tag{30}$$
+
+With $D = 0$ both sums hold one term, and with $\beta = 0$ and the convention $0^0 = 1$ every term with $d \ge 1$ vanishes, so
+the robot acts by $\arg\max_{a \in A_{\text{root}}}\bar{Q}(b,a)$ over the $N+1$ policy samples and never queries the model.
+This is **not** the plain policy, because the critic still re-ranks the samples. The design names three distinct settings at
+the shallow end and the sweeps report all three.
+
+| Setting | What the robot does | Calls to $f_\psi$ |
+|---|---|---|
+| depth $-1$ | acts with the mean action $\mu_\theta(b)$; this is the no search baseline | 0 |
+| $D = 0$, or any $D$ with $\beta = 0$ | critic argmax over the $N+1$ root candidates | 0 |
+| $D \ge 1$ with $\beta > 0$ | the full tree search of section 9.1 | equation (31) |
+
+The gap from depth $-1$ to $D = 0$ measures what the critic adds by re-ranking policy samples, and the gap from $D = 0$ to
+$D \ge 1$ measures what the world model adds. Keeping the two gaps apart is what makes the H2 and H3 sweeps honest, because
+the $D = 0$ column and the $\beta = 0$ column are then the same critic argmax, computed by the same code on the same
+snapshot.
+
+### 9.3 Compute per decision step
+
+$$n(D) = \begin{cases}0 & D = 0 \\ (N+1) + (D-1)JN & D \ge 1\end{cases}; \quad \text{per robot per env: } K n(D) \text{ model calls}, \ K n(D) \text{ fusions}, \ M n(D) \text{ critic heads} \tag{31}$$
+
+Level 1 expands all $N+1$ root candidates and every later level expands $J$ paths into $N$ children each, and at each node
+robot $i$ rolls all $K$ estimates forward, fuses $K$ beliefs, and runs the policy on $K-1$ teammate estimates. The root
+forward correction adds $L(K-1)$ model calls per robot.
+
+$$\text{model calls}_{\text{indep}} = K^2 n(D); \qquad n_{\text{leader}}(D) = (NK+1) + (D-1)JNK, \qquad \text{model calls}_{\text{leader}} = K\,n_{\text{leader}}(D) \tag{32}$$
+
+In `independent` mode all $K$ robots search, so the cost is quadratic in team size, which is the overhead QWM names as a
+limitation multiplied by $K$. With $K=6, N=8, J=4, D=2$ the independent count is $36 \times 41 = 1476$ model calls per
+environment per step against $6 \times 241 = 1446$ for `leader`, within 3 percent, and that match is what makes H4 a fair
+comparison; report measured wall clock too, because equation (32) counts calls and not kernel launches.
+
+## 10. The two error sources in the tree
+
+This section is the mathematical statement of H2 and H3. One result is a bound under a stated assumption, and the rest is a
+heuristic that is labelled as one.
+
+### 10.1 Source one: model error
+
+$$\varepsilon_1 = \sqrt{\mathcal{E}_1} = \mathbb{E}\big\|f_\psi(e_t, a_t, c_t) - e_{t+1}\big\|_2 \tag{33}$$
+
+This is the one step latent prediction error of equation (23). It is the only error source QWM faces, and the one QWM blames
+for the falloff at high depth.
+
+**Assumption A (Lipschitz model).** There exists $\lambda \ge 0$ with
+$\|f_\psi(z,a,c) - f_\psi(z',a,c)\| \le \lambda\|z - z'\|$ for all $z, z'$ and all $a, c$.
+
+$$\delta_{d+1} \le \lambda\delta_d + \varepsilon_1 \qquad \implies \qquad \delta_d \le \varepsilon_1\sum_{m=0}^{d-1}\lambda^m = \varepsilon_1 \cdot \begin{cases} d & \lambda = 1 \\[2pt] \dfrac{\lambda^d - 1}{\lambda - 1} & \lambda \ne 1\end{cases} \tag{34}$$
+
+Write $\delta_d = \|\hat{z}^{(d)} - e_{t+d}\|$; one step of equation (23) adds a fresh $\varepsilon_1$ and propagates the
+existing gap through $f_\psi$, and unrolling gives the bound. Equation (34) is a real bound under Assumption A: model error
+grows linearly with depth when the model is non expansive and geometrically when it is not. Measure $\lambda$ rather than
+assume it, though the residual form of equation (21) makes $\lambda$ close to 1 by construction.
+
+### 10.2 Source two: teammate imagination error
+
+$$\Delta_j^{(d)} = \big\|\hat{z}_j^{(d)} - b_{j, t+d}\big\|, \qquad \Delta_j^{(0)}(L) \approx \underbrace{\varepsilon_1\sum_{m=0}^{L-1}\lambda^m}_{\text{model error in the correction}} + \underbrace{\kappa_{\text{obs}} L}_{\text{observations } j \text{ made and } i \text{ never saw}} \tag{35}$$
+
+This is the gap between robot $i$'s estimate of teammate $j$ and teammate $j$'s real belief, and unlike $\delta_d$ it is not
+zero at the root. The first term is equation (34) applied to the roll forward of equation (25), the second is the information
+gap that equation (25) fills with guesses, $\kappa_{\text{obs}}$ is a heuristic stand in for how much one fresh observation
+moves a belief, and the argument needs only that both terms grow with $L$.
+
+$$\big\|\mu_\theta(\mathrm{fuse}(\hat{z}_j^{(d)})) - a_{j,t+d}\big\| \le \kappa_\pi \Delta_j^{(d)}, \qquad \big\|f_\psi(z,a,c) - f_\psi(z,a,\tilde{c})\big\| \le \frac{\kappa_c\,\mathrm{Lip}(h_\psi)}{|\mathcal{N}_i|}\sum_j \kappa_\pi \Delta_j^{(d)} \tag{36}$$
+
+A gap in beliefs becomes a gap in actions through the shared policy, with $\kappa_\pi = \mathrm{Lip}(\mu_\theta \circ
+\mathrm{fuse})$. That gap in actions becomes a gap in the predicted payload motion through the action context of equation
+(21), which enters the model.
+
+### 10.3 How the two sources grow with depth and staleness
+
+$$\delta_{d+1} \le \lambda\delta_d + \varepsilon_1 + \kappa\bar{\Delta}^{(d)}, \quad \kappa = \kappa_c \mathrm{Lip}(h_\psi)\kappa_\pi; \qquad \bar{\Delta}^{(d)} \ge \bar{\Delta}^{(0)}(L) \ \implies\ \delta_d \le \big(\varepsilon_1 + \kappa\bar{\Delta}^{(0)}(L)\big)\sum_{m=0}^{d-1}\lambda^m \tag{37}$$
+
+Each step of the tree now injects two errors and not one, with $\bar{\Delta}^{(d)}$ the mean teammate gap at depth $d$. Robot
+$i$'s estimate of a teammate receives no new information at any depth, by design, so the teammate gap does not shrink as the
+tree deepens and the conservative reading holds. Read the right side against equation (34): the two have the same shape in
+$d$ and differ only in the per step injection, because QWM injects $\varepsilon_1$ and this project injects
+$\varepsilon_1 + \kappa\bar{\Delta}^{(0)}(L)$, a coefficient that grows with $L$ by equation (35).
+
+$$D^*(L) \approx \frac{\eta}{\varepsilon_1 + \kappa\,\bar{\Delta}^{(0)}(L)} \tag{38}$$
+
+Search stops helping at the depth where imagined value in equation (29) becomes less accurate than the root critic estimate;
+call it $D^*$, let $\eta$ be the error budget at that crossover, and solve equation (37) in the linear case $\lambda = 1$.
+$D^*(L)$ is decreasing in $L$, which is H2, and it is smaller than QWM's $D^* \approx \eta/\varepsilon_1$ at every $L \ge 0$,
+which is the claim that useful depth collapses faster in a team.
+
+**Which parts are which.** Equation (34) is a bound, valid under Assumption A. Equations (35) to (38) are a **heuristic**, for
+three reasons: the constants $\kappa_{\text{obs}}$, $\kappa_\pi$, and $\kappa_c$ are not measured, the fusion layer composed
+with a tanh policy has no verified Lipschitz constant, and the step from a latent error $\delta_d$ to a loss in success rate
+is not modelled at all. The claim $\kappa\bar{\Delta}^{(0)}(L) > \varepsilon_1$, meaning teammate error dominates model error,
+is an empirical claim and is exactly what the H2 grid tests; a flat $D^*(L)$ refutes the heuristic and the project reports it.
+
+### 10.4 The same argument for the tree search discount, which is H3
+
+$$\big|Q_d - Q_d^{\text{true}}\big| \le \kappa_Q \delta_d \quad \implies \quad \mathrm{bias}(S) \le \kappa_Q \frac{\sum_{d=0}^{D}\beta^d \delta_d}{\sum_{d=0}^{D}\beta^d}, \qquad \text{therefore } \beta^*(L) \text{ is non increasing in } L \tag{39}$$
+
+The score of equation (29) is a weighted average of $D+1$ critic readings, each carrying a bias that grows with the latent
+error at that depth, with $\kappa_Q = \mathrm{Lip}(\bar{Q})$. Here $\delta_0 = 0$ because the root belief comes from a real
+observation, and every deeper $\delta_d$ is positive and increasing by equation (37), so the bound is increasing in $\beta$.
+Raising $\beta$ shifts weight onto the more biased readings, lowering it discards the lookahead the search exists to provide,
+and equation (37) says $\delta_d$ grows faster when $L$ grows, which moves the balance point down. That is H3, and it rests on
+the same heuristic as H2 and inherits the same caveats.
+
+## 11. The hypotheses as measurable statements
+
+$$\hat{p} = \frac{1}{R}\sum_{r=1}^{R}\hat{p}_r, \quad \mathrm{se}(\hat{p}) = \frac{1}{\sqrt{R}}\sqrt{\frac{1}{R-1}\sum_r (\hat{p}_r - \hat{p})^2}, \quad R \ge 3; \qquad \hat{d} = \hat{p}_A - \hat{p}_B, \quad \mathrm{se}(\hat{d}) = \sqrt{\mathrm{se}(\hat{p}_A)^2 + \mathrm{se}(\hat{p}_B)^2} \tag{40}$$
+
+The design's protocol fixes evaluation at 256 environments and at least 3 batches, with $\hat{p}_r$ the success rate over the
+256 environments of batch $r$. The standard error is taken over batch means and not over the environments inside one batch,
+because those share the loaded snapshot and the process state. A difference counts when $|\hat{d}| > 2\,\mathrm{se}(\hat{d})$,
+and all runs use seed 0, so every cell of every sweep loads the identical week 5 snapshot.
+
+### 11.1 H1. Search helps at all
+
+| Item | Statement |
+|---|---|
+| Quantity | $\hat{p}(D, L=1)$, the mean success rate of equation (40) |
+| Comparison | $\hat{d} = \hat{p}(D=2) - \hat{p}(D=0)$, both at $L = 1$, same snapshot, with depth $-1$ reported beside both |
+| Script | `scripts/evaluate.py --depth 0` and `--depth 2`, output `results/h1.json` |
+| Confirms | $\hat{d} > 2\,\mathrm{se}(\hat{d})$ |
+| Refutes | $\hat{d} \le 2\,\mathrm{se}(\hat{d})$, including any negative $\hat{d}$ |
+
+By equation (30) the $D = 0$ arm calls the world model zero times, so this comparison isolates the world model and nothing
+else. It does not isolate search against the plain policy, because $D = 0$ already re-ranks the policy samples with the
+critic, which is why depth $-1$ goes in the same table. If H1 fails, H2 and H3 are untestable and the project reports a
+boundary of QWM's mechanism under decentralization. The zero lag oracle baseline separates the two causes, because search that
+helps at $L=0$ and not at $L=1$ points at staleness and not at a broken model.
+
+### 11.2 H2. The best depth shrinks as teammate information gets staler
+
+| Item | Statement |
+|---|---|
+| Quantity | $D^*(L) = \arg\max_{D \ge 0} \hat{p}(D, L)$ over $D \in \{0,1,2,4,6\}$, with depth $-1$ as the reference row |
+| Comparison | $D^*(L)$ across $L \in \{0,1,2,4\}$, at the default $\beta = 0.5$ |
+| Script | `scripts/sweep.py --grid depth x lag`, output `results/h2.json` |
+| Confirms | $D^*(L)$ non increasing in $L$, $D^*(L_{\max}) < D^*(0)$, and at the smallest $L$ the peak beats $D=0$ by more than $2\,\mathrm{se}$ |
+| Refutes | $D^*(L)$ flat across $L$, or increasing with $L$ |
+
+This is equation (38) read off a grid, and every cell is a test time evaluation on one snapshot, so no cell can differ because
+of training. The requirement that the peak beat $D=0$ exists so that $D^*(L)$ marks a real peak and not the argmax of noise,
+and the depth $-1$ row anchors the whole grid against the plain policy.
+
+### 11.3 H3. The tree search discount shrinks as teammate information gets staler
+
+| Item | Statement |
+|---|---|
+| Quantity | $\beta^*(L) = \arg\max_\beta \hat{p}(\beta, L)$ at fixed $D$ |
+| Comparison | $\beta^*(L)$ across $L \in \{0,1,2,4\}$, with $\beta \in \{0.1, 0.3, 0.5, 0.7, 0.9, 1.0\}$ |
+| Script | `scripts/sweep.py --grid beta x lag`, output `results/h3.json` |
+| Confirms | $\beta^*(L)$ non increasing in $L$, and $\beta^*(L_{\max}) < \beta^*(0)$ |
+| Refutes | $\beta^*(L)$ flat or increasing with $L$ |
+
+This is equation (39) read off a grid. Run one check first: the $\beta = 0$ column must reproduce the $D = 0$ column of H2 to
+within $2\,\mathrm{se}$, by equation (30). If it does not, the search code has a defect and neither grid is
+interpretable. The sweep does not include $\beta = 0$, so run that check as a separate evaluation.
+
+### 11.4 H4. Leader elected search beats independent search at matched compute
+
+| Item | Statement |
+|---|---|
+| Quantity | $\hat{p}$ under `independent`, `leader`, and `round_robin` |
+| Compute match | model calls of equation (32) within 10 percent, plus measured wall clock per decision step |
+| Comparison | $\hat{d}_1 = \hat{p}(\text{leader}) - \hat{p}(\text{independent})$, $\hat{d}_2 = \hat{p}(\text{leader}) - \hat{p}(\text{round\_robin})$ |
+| Script | `scripts/sweep.py --leader`, output `results/h4.json` |
+| Confirms | $\hat{d}_1 > 2\,\mathrm{se}(\hat{d}_1)$ **and** $\hat{d}_2 > 2\,\mathrm{se}(\hat{d}_2)$ |
+| Refutes | $\hat{d}_1 \le 2\,\mathrm{se}(\hat{d}_1)$ |
+
+Both differences must hold, because they answer different questions: $\hat{d}_1$ asks whether concentrating the compute budget
+in one searcher beats spreading it, and $\hat{d}_2$ asks whether the uncertainty election of equation (28) beats picking the
+leader by $t \bmod K$. A result with $\hat{d}_1 > 0$ and $\hat{d}_2 \approx 0$ says the joint candidate search does the work
+and the election contributes nothing, which is a weaker claim than H4. Report the leader disagreement rate of section 8
+alongside these numbers, because a high rate is the mechanism that would break `leader` mode.
+
+## 12. Open questions
+
+The design fixes every constant this document uses. Two items remain.
+
+1. **The no search arm of H1.** Design section 7 names depth $-1$, the mean action, as the no search baseline, while the
+   protocol table of design section 9 runs H1 as `--depth 0` against `--depth 2`. The two answer different questions, by the
+   table in section 9.2. This document reports both arms and does not choose between them.
+2. **The normalization of the decoder target.** Equation (23) multiplies by $A = 5.0$ m to report metres. That is correct only
+   if the decoder target of design section 5 divides the relative payload position by $A$, as the observation of design
+   section 3.5 does. Design section 5 does not say.
+
+## 13. References
+
+- Ball, P. J., Smith, L., Kostrikov, I., and Levine, S. (2023). *Efficient Online Reinforcement Learning with Offline Data*. arXiv:2302.02948. Source for equations (17) to (20).
+- Haarnoja, T., Zhou, A., Abbeel, P., and Levine, S. (2018). *Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor*. arXiv:1801.01290. Source for equations (11) to (16).
+- Dong, Y. et al. (2026). *Q-learning with World Models (QWM)*. arXiv:2608.17163. Source for the search of section 9 and the depth ablation that H2 extends.
+- Vaswani, A. et al. (2017). *Attention Is All You Need*. arXiv:1706.03762. Source for equations (26) and (27).
+- Oliehoek, F. A. and Amato, C. (2016). *A Concise Introduction to Decentralized POMDPs*. Springer. Source for equation (1).
