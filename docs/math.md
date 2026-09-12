@@ -134,7 +134,7 @@ $$J(\pi) = \mathbb{E}_\pi\Big[\textstyle\sum_t \gamma^t\big(r_t + \alpha\,\mathc
 The entropy term pays the policy to stay random. Under a sparse reward the policy gets no gradient from the reward until it
 succeeds once, so without this term it collapses early and never finds the goal.
 
-$$\mathcal{T}^\pi Q(b,a) = r + \gamma\,\mathbb{E}_{b', a' \sim \pi}\big[Q(b',a') - \alpha \log \pi(a' \mid b')\big], \qquad y = r + \gamma(1 - \text{terminated})\,\tilde{Q}_{\bar\phi}(b',a') \tag{12}$$
+$$\mathcal{T}^\pi Q(b,a) = r + \gamma\,\mathbb{E}_{b', a' \sim \pi}\big[Q(b',a') - \alpha \log \pi(a' \mid b')\big], \qquad y = \mathrm{clip}\Big(r + \gamma\,(1 - \text{terminated})\,\tilde{Q}_{\bar\phi}(b',a'),\ 0,\ 1\Big) \tag{12}$$
 
 The left side is the soft Bellman operator of SAC. The right side is the target this project uses, and it leaves the
 entropy term out. This is RLPD's `backup_entropy = False` setting, and it exists for a sparse terminal reward: the reward is
@@ -144,6 +144,14 @@ run of this project showed exactly that: $Q$ near 20 and lower on the transition
 of the backup the critic estimates the discounted success probability, and the entropy still acts on the actor through
 equation (15). Only `terminated` zeroes the bootstrap, because a truncated episode still has a future, and equation (19)
 defines $\tilde{Q}_{\bar\phi}$.
+
+The target is also clamped to $[0,1]$. The reward of equation (3) is one terminal unit, so every true value lies in that
+range, which makes the clip exact knowledge of the task and not a heuristic. Without it the minimum of two noisy heads in
+equation (19) biases each target low by about $0.56$ times the head spread, because the mean of the minimum of two
+independent draws sits $\sigma/\sqrt{\pi}$ below their own mean, and the bootstrap compounds that constant offset to
+$0.56\,\sigma/(1-\gamma)$; at the spread of 0.005 the training run showed, this predicts $-0.28$, against the $Q$ near $-0.3$
+the run reached. The clip does not move the fixed point when the heads agree, because the minimum then equals the value and
+every true value already lies inside the range.
 
 $$\mathcal{L}_Q(\phi) = \frac{1}{M}\sum_{m=1}^{M}\mathbb{E}_{\mathcal{D}}\Big[\big(Q_{\phi,m}(b,a) - y\big)^2\Big] \tag{13}$$
 
@@ -205,7 +213,8 @@ their minimum, exactly as in the RLPD paper. The minimum of two draws is a biase
 that counters the overestimation equation (12) would otherwise compound, because the actor chases whatever the critic
 overestimates and the overestimate returns as a target. Ten heads make the amount of pessimism tunable, since a pair drawn
 from a large ensemble is milder than the minimum over all of it, and equation (15) keeps the actor on the mean over all heads
-so the policy climbs the best estimate and not the pessimistic one.
+so the policy climbs the best estimate and not the pessimistic one. The clip in equation (12) bounds the pessimism, so the
+downward bias corrects one target and does not accumulate across updates.
 
 $$\text{rows sampled per collected row} = \frac{G \cdot B}{E} = \frac{4 \times 256}{256} = 4 \tag{20}$$
 
