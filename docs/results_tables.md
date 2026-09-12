@@ -113,3 +113,29 @@ H4 verdict: **confirmed**.
 | sampled policy, lag 1 | 62.2 ± 1.4 | 106.8 |
 | sampled policy, lag 2 | 66.9 ± 0.5 | 106.5 |
 
+### First day controls (2d)
+
+| Group | Cell | Success (%) | Envs x batches |
+|---|---|---|---|
+| F5a | no search, no forward correction, lag 0 | 37.5 ± 3.1 | 128 x 3 |
+| F5a | no search, forward correction, lag 0 | 38.8 ± 2.3 | 128 x 3 |
+| F5a | no search, no forward correction, lag 1 | 48.4 ± 2.3 | 128 x 3 |
+| F5a | no search, forward correction, lag 1 | 50.3 ± 2.6 | 128 x 3 |
+| F5a | no search, no forward correction, lag 2 | 45.8 ± 1.4 | 128 x 3 |
+| F5a | no search, forward correction, lag 2 | 63.8 ± 1.8 | 128 x 3 |
+| F5a | no search, no forward correction, lag 4 | 41.9 ± 2.5 | 128 x 3 |
+| F5a | no search, forward correction, lag 4 | 61.7 ± 2.8 | 128 x 3 |
+| F3 | trained world model, depth 2 | 43.5 ± 2.0 | 128 x 3 |
+| F3 | random world model, depth 2 | 39.1 ± 2.8 | 128 x 3 |
+| F3 | trained world model, depth 6 | 45.3 ± 2.3 | 128 x 3 |
+| F3 | random world model, depth 6 | 41.7 ± 1.4 | 128 x 3 |
+| F2 | decoded scorer, depth 0 | 50.5 ± 2.6 | 128 x 3 |
+| F2 | decoded scorer, depth 2 | 41.4 ± 1.6 | 128 x 3 |
+| F2 | random scorer, depth 0 | 66.7 ± 2.5 | 128 x 3 |
+| F2 | critic scorer, depth 0 | 44.3 ± 4.3 | 128 x 3 |
+| F2 | sampled policy | 61.7 ± 1.2 | 128 x 3 |
+| F7 | independent, lag 1 | 43.5 ± 2.0 | 128 x 3 |
+| F7 | leader fresh election no fallback, lag 1 | 24.7 ± 1.9 | 128 x 3 |
+| F7 | independent, lag 4 | 43.0 ± 2.5 | 128 x 3 |
+| F7 | leader fresh election no fallback, lag 4 | 19.3 ± 1.8 | 128 x 3 |
+

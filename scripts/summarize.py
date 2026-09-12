@@ -197,6 +197,15 @@ def ablations(d: dict) -> None:
     print()
 
 
+def day1(d: dict) -> None:
+    print(f"### First day controls ({d.get('sim', '?')})\n")
+    print("| Group | Cell | Success (%) | Envs x batches |")
+    print("|---|---|---|---|")
+    for r in d["rows"]:
+        print(f"| {r.get('group', '')} | {r['name']} | {pct(r['success'], r['success_se'])} | {r['envs']} x {r['batches']} |")
+    print()
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--results", default="results")
@@ -220,6 +229,8 @@ def main() -> None:
         simple(d, "team", "Transfer: team composition at lag 1 (trained on the default team)")
     if (d := load(os.path.join(R, "ablations.json"))):
         ablations(d)
+    if (d := load(os.path.join(R, "day1_controls.json"))):
+        day1(d)
 
 
 if __name__ == "__main__":

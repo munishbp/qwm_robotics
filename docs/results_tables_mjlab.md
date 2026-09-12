@@ -113,3 +113,41 @@ H4 verdict: **refuted (leader is worse)**.
 | sampled policy, lag 1 | 65.4 ± 2.2 | 85.7 |
 | sampled policy, lag 2 | 67.4 ± 0.7 | 87.7 |
 
+### First day controls (mjlab)
+
+| Group | Cell | Success (%) | Envs x batches |
+|---|---|---|---|
+| F5a | no search, no forward correction, lag 0 | 38.8 ± 3.3 | 128 x 3 |
+| F5a | no search, forward correction, lag 0 | 39.8 ± 2.0 | 128 x 3 |
+| F5a | no search, no forward correction, lag 1 | 40.1 ± 2.1 | 128 x 3 |
+| F5a | no search, forward correction, lag 1 | 44.8 ± 0.7 | 128 x 3 |
+| F5a | no search, no forward correction, lag 2 | 39.6 ± 1.4 | 128 x 3 |
+| F5a | no search, forward correction, lag 2 | 45.1 ± 0.7 | 128 x 3 |
+| F5a | no search, no forward correction, lag 4 | 37.0 ± 1.1 | 128 x 3 |
+| F5a | no search, forward correction, lag 4 | 45.1 ± 3.1 | 128 x 3 |
+| F3 | trained world model, depth 2 | 67.4 ± 2.5 | 128 x 3 |
+| F3 | random world model, depth 2 | 57.0 ± 1.4 | 128 x 3 |
+| F3 | trained world model, depth 6 | 68.8 ± 0.5 | 128 x 3 |
+| F3 | random world model, depth 6 | 56.0 ± 2.9 | 128 x 3 |
+| F2 | decoded scorer, depth 0 | 45.6 ± 2.1 | 128 x 3 |
+| F2 | decoded scorer, depth 2 | 39.3 ± 1.1 | 128 x 3 |
+| F2 | random scorer, depth 0 | 68.2 ± 1.4 | 128 x 3 |
+| F2 | critic scorer, depth 0 | 58.3 ± 1.8 | 128 x 3 |
+| F2 | sampled policy | 71.4 ± 2.8 | 128 x 3 |
+| F7 | independent, lag 1 | 68.8 ± 0.5 | 128 x 3 |
+| F7 | leader fresh election no fallback, lag 1 | 28.6 ± 2.3 | 128 x 3 |
+| F7 | independent, lag 4 | 56.8 ± 2.0 | 128 x 3 |
+| F7 | leader fresh election no fallback, lag 4 | 21.1 ± 1.2 | 128 x 3 |
+| F1 | H1 sampled policy, lag 0 | 60.5 ± 1.8 | 256 x 5 |
+| F1 | H1 random candidate, lag 0 | 58.8 ± 0.7 | 256 x 5 |
+| F1 | H1 depth 0, lag 0 | 64.3 ± 1.4 | 256 x 5 |
+| F1 | H1 depth 6 beta 0.9, lag 0 | 73.3 ± 0.5 | 256 x 5 |
+| F1 | H1 sampled policy, lag 1 | 65.9 ± 1.2 | 256 x 5 |
+| F1 | H1 random candidate, lag 1 | 63.4 ± 0.6 | 256 x 5 |
+| F1 | H1 depth 0, lag 1 | 62.6 ± 0.6 | 256 x 5 |
+| F1 | H1 depth 6 beta 0.9, lag 1 | 73.0 ± 1.8 | 256 x 5 |
+| F1 | H1 sampled policy, lag 4 | 65.8 ± 0.6 | 256 x 5 |
+| F1 | H1 random candidate, lag 4 | 64.9 ± 1.3 | 256 x 5 |
+| F1 | H1 depth 0, lag 4 | 54.5 ± 1.7 | 256 x 5 |
+| F1 | H1 depth 6 beta 0.9, lag 4 | 62.9 ± 1.5 | 256 x 5 |
+

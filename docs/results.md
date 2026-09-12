@@ -14,8 +14,8 @@ main finding.
 
 | Hypothesis | 2D simulator | mjlab |
 |---|---|---|
-| H1: search improves the decentralized baseline | Refuted. Depth 2: 43.2 against 52.3 for the mean action | Confirmed. Depth 2: 69.5 against 45.1 (+24.5 points, 2 SE 5.3) |
-| H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Rule met (6, 6, 6, 4); the gain of search shrinks from +35 at lag 0 to +24 at lag 4 |
+| H1: search improves the decentralized baseline | Refuted. Depth 2: 43.2 against 52.3 for the mean action | Confirmed. Depth 2: 69.5 against 45.1 for the mean action; depth 6 beats the sampled policy by 12.8 at lag 0 and 7.1 at lag 1 (section 14.1) |
+| H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Rule met (6, 6, 6, 4); against the sampled policy the gain of search is +12.8, +7.1, −2.9 at lags 0, 1, 4 |
 | H3: best discount shrinks with staleness | Rule met (1.0, 0.7, 0.3, 0.0), all below no search | Rule met (0.9, 0.9, 0.9, 0.7); imagined value adds 9 to 11 points at lags 0 to 2 |
 | H4: elected leader beats independent search at matched compute | Rule met, but by a fallback to the plain policy | Refuted. Independent 69.0 against leader 41.1 and round robin 43.8 |
 | Transfer to 9, 12, 16 robots, zero shot | 89, 93, 96 percent without search | 57, 58, 64 without search, 90, 93, 97 with search |
@@ -559,6 +559,78 @@ evaluation now seeds the torch RNG per batch, so a rerun gives identical cells a
   did not use in its decision rules. The H1 gain against that baseline is smaller and reaches
   significance only at depth 4 to 6.
 
+## 14. First day controls
+
+The controls of `next_steps.md` "The first day" ran on both snapshots after the review
+(`scripts/day1.sh`, data in `results/day1_controls.json` and `runs/mjlab/results/day1_controls.json`).
+Every cell in one group uses the same env seeds and, after the seeding fix, the same candidate
+draws, so cells within a group are paired.
+
+### 14.1 The re baselined H1 on mjlab (256 envs, 5 batches)
+
+| Lag | Sampled policy | Random candidate | Depth 0 (critic argmax) | Depth 6, beta 0.9 | Depth 6 minus sampled | 2 SE |
+|---|---|---|---|---|---|---|
+| 0 | 60.5 ± 1.8 | 58.8 ± 0.7 | 64.3 ± 1.4 | 73.3 ± 0.5 | +12.8 | 3.7 |
+| 1 | 65.9 ± 1.2 | 63.4 ± 0.6 | 62.6 ± 0.6 | 73.0 ± 1.8 | +7.1 | 4.3 |
+| 4 | 65.8 ± 0.6 | 64.9 ± 1.3 | 54.5 ± 1.7 | 62.9 ± 1.5 | −2.9 | 3.2 |
+
+**This is the fair H1, and it resolves.** Against the sampled policy, depth 6 search wins by 12.8
+points at lag 0 and 7.1 at lag 1, both past 2 SE, and by nothing at lag 4. The critic argmax
+alone never beats a random candidate (64.3 against 58.8 at lag 0 is the only positive gap, and
+at lags 1 and 4 it is below random). So the gain is the world model rollout's, and it is gone
+when teammate information is four frames old. That is H1 and H2 in one table: search helps when
+imagination has fresh enough information, and the helpful window closes between lag 1 and lag 4.
+
+### 14.2 The world model matters on mjlab and a little on 2D
+
+| Simulator | Depth | Trained model | Random model |
+|---|---|---|---|
+| mjlab | 2 | 67.4 ± 2.5 | 57.0 ± 1.4 |
+| mjlab | 6 | 68.8 ± 0.5 | 56.0 ± 2.9 |
+| 2D | 2 | 43.5 ± 2.0 | 39.1 ± 2.8 |
+| 2D | 6 | 45.3 ± 2.3 | 41.7 ± 1.4 |
+
+A random model costs 11 to 13 points on mjlab and about 4 on 2D. The rollout is the part of the
+search that carries the mjlab result.
+
+### 14.3 Scorer controls at depth 0 (lag 1)
+
+| Simulator | Random scorer | Critic scorer | Decoded state scorer | Sampled policy |
+|---|---|---|---|---|
+| 2D | 66.7 ± 2.5 | 44.3 ± 4.3 | 50.5 ± 2.6 | 61.7 ± 1.2 |
+| mjlab | 68.2 ± 1.4 | 58.3 ± 1.8 | 45.6 ± 2.1 | 71.4 ± 2.8 |
+
+A random pick among the nine candidates matches the sampled policy, and both scorers select
+worse than random at depth 0 on both simulators. At depth 0 the decoded scorer sees the root
+belief, which does not depend on the candidate, so it reproduces the mean policy on 2D (50.5
+against 50.3). At depth 2 the decoded scorer is worse still (41.4 on 2D, 39.3 on mjlab). No hand
+built scorer through the model beats a random candidate, so the search's value on mjlab is not
+"better ranking of candidates" but "the rollout finds candidates whose consequences the critic
+can see", which the depth 6 against depth 0 gap of 9 to 10 points in 14.1 measures.
+
+### 14.4 Forward correction is what the staleness curves measure
+
+| Simulator | Lag | With forward correction | Without |
+|---|---|---|---|
+| 2D | 0, 1, 2, 4 | 38.8, 50.3, 63.8, 61.7 | 37.5, 48.4, 45.8, 41.9 |
+| mjlab | 0, 1, 2, 4 | 39.8, 44.8, 45.1, 45.1 | 38.8, 40.1, 39.6, 37.0 |
+
+Without the rolled estimates the 2D baseline is flat and the rise with staleness disappears. The
+fusion does not over trust fresh messages; the world model's rolled latent is a better input than
+a raw encoding, and a staler message gets more rolling. On mjlab the correction is worth 5 to 8
+points at every lag from 1 up.
+
+### 14.5 Leader election without the fallback
+
+| Simulator | Lag | Independent | One fresh election, all follow |
+|---|---|---|---|
+| 2D | 1, 4 | 43.5, 43.0 | 24.7, 19.3 |
+| mjlab | 1, 4 | 68.8, 56.8 | 28.6, 21.1 |
+
+H4 is refuted without the confound on both simulators, by 19 to 40 points.
+
+DEMO_QUALITY_PLACEHOLDER
+
 ## 11. Conclusions
 
 1. **Test time world model search helps a decentralized heterogeneous team when the critic can
@@ -586,12 +658,12 @@ evaluation now seeds the torch RNG per batch, so a rerun gives identical cells a
    messages usable. The permutation invariant fusion transfers zero shot to 16 robots at 96 percent
    on 2D and to 16 robots at 64 percent without search and 97 percent with search on mjlab.
 
-5. **The sampled policy is the baseline a fair claim about search must beat.** On mjlab it reaches
-   65 to 67 percent on its own. Against it the search's margin is 4 to 7 points and does not reach
-   2 SE at any setting with 3 batches of 128 envs. Against the deterministic mean the margin is 24
-   points. Both numbers are true, the protocol should have used the first, and the H1 claim on
-   mjlab is therefore "search beats the mean policy by 24 points and the sampled policy by an
-   amount this study cannot resolve".
+5. **Against the fair baseline, the sampled policy, search wins on mjlab at fresh to one frame old
+   teammate information and not at four frames.** At 256 envs and 5 batches, depth 6 beats the
+   sampled policy by 12.8 points at lag 0 and 7.1 at lag 1, past 2 SE, and by −2.9 at lag 4
+   (section 14.1). The critic argmax alone never beats a random candidate; the world model rollout
+   carries the gain, and a random model loses 11 points. This replaces the earlier unresolved
+   statement.
 
 6. **Getting an off policy learner to train at all on this task took nine documented changes**,
    each a way the RLPD and QWM recipe breaks under sparse reward and partial observability. The
