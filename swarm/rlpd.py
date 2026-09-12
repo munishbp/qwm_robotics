@@ -44,7 +44,12 @@ class RLPDConfig:
     # because alpha decays to zero and a critic that is flat in the action never shrinks it, so
     # a sampled bootstrap values a noisy policy that fails, and that value decays by about 0.8
     # per step away from the goal. The search and the evaluation act with the mean policy.
-    target_policy: str = "mean"  # mean or sample
+    # The bootstrap uses the next action recorded in the buffer (a SARSA target on the behavior
+    # data) and falls back to the policy mean where the next row is unavailable. The policy mean
+    # lies about 0.45 from the data action under partial observability, and once the critic learns
+    # action dependence that mean is an out of distribution query: the value chain collapsed to
+    # zero at about step 5000 in every run that bootstrapped on the policy.
+    target_policy: str = "data"  # data, mean, or sample
     # The target is the mean of two random heads, not the minimum. The heads disagree by 0.02 to
     # 0.03 near the goal, the minimum sits 0.56 of that below the mean on every bootstrap, and
     # over a 90 step horizon that compounds to a value of zero. The [0, 1] clamp bounds the
@@ -83,10 +88,15 @@ class Agent:
         now = self.belief_fn(self.nets, buf, env, row, use_next=False)
         with torch.no_grad():
             nxt = self.belief_fn(self.nets, buf, env, row, use_next=True)
+        # The next recorded action exists when the next row is in the buffer and in the same
+        # episode. Otherwise the bootstrap uses the policy mean.
+        nrow = (row + 1).clamp(max=buf.t - 1)
+        has_next = (row + 1 <= buf.t - 1) & (buf.ep_start[env, buf._slot(nrow)] == buf.ep_start[env, slot])
         return {
             "b": now["b"], "e": now["e"], "b_next": nxt["b"], "e_next": nxt["e"],
             "a": buf.action[env, slot], "r": buf.reward[env, slot],
             "term": buf.terminated[env, slot], "target": buf.target[env, slot],
+            "a_next": buf.action[env, buf._slot(nrow)], "has_next": has_next,
         }
 
     def update(self, offline: Buffer | None, online: Buffer) -> dict[str, float]:
@@ -104,6 +114,8 @@ class Agent:
             a_next, logp_next = n.actor.sample(d["b_next"])
             if cfg.target_policy == "mean":
                 a_next = n.actor.mean(d["b_next"])
+            elif cfg.target_policy == "data":
+                a_next = torch.where(d["has_next"].view(-1, 1, 1), d["a_next"], n.actor.mean(d["b_next"]))
             q_t = n.critic_target(d["b_next"], a_next)
             pair = torch.randperm(cfg.num_critics, device=self.device)[:2]
             v_next = q_t[pair].mean(0) if cfg.target_reduce == "mean" else q_t[pair].min(0).values

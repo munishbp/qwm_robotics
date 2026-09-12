@@ -209,10 +209,13 @@ teammates, so team size can change at test time.
 - Entropy temperature `alpha` is learned with target entropy `-3`, starting at `0.1`.
 - The critic target does not back up the entropy term (RLPD `backup_entropy = False`). Under a
   sparse terminal reward the entropy stream would reward a long episode and the actor would stall.
-- The bootstrap action is the policy mean, not a sample. Alpha decays to zero and a critic that is
-  flat in the action never shrinks the policy standard deviation, so a sampled bootstrap values a
-  noisy policy that fails, and the value decayed by about 0.8 per step away from the goal. The
-  search and the evaluation act with the mean policy, so the critic values that policy.
+- The bootstrap action is the next action recorded in the buffer, a SARSA target on the behavior
+  data, with the policy mean only where the next row is unavailable. Two earlier choices failed.
+  A sampled bootstrap valued the noisy collection policy and decayed by 0.8 per step. A bootstrap
+  on the policy mean held for 4,000 steps and then collapsed: the mean lies about 0.45 from the
+  data action under partial observability, and once the critic learned action dependence that
+  mean became an out of distribution query. The critic therefore values the behavior data, which
+  is 99 percent successful in the offline half, and the search uses it to rank candidates.
 
 ### 6.5 World model: `swarm/world_model.py`
 
