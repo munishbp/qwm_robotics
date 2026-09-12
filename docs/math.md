@@ -6,8 +6,8 @@ It builds on [concepts.md](../concepts.md), which explains the ideas in plain la
 which fixes every constant. The design is the source of truth. Where the proposal and the design differ, the design wins, and
 section 8 of the design gives the reason.
 
-Every displayed equation carries a number, and later documents cite these numbers. Section 12 lists the two questions the
-design still leaves open. This document decides neither of them.
+Every displayed equation carries a number, and later documents cite these numbers. Section 12 records any question the design
+leaves open. This document decides none of them.
 
 ## 1. Notation
 
@@ -170,10 +170,11 @@ behavior policy of the two buffers, and that policy succeeds 99 percent of the t
 estimates is a useful one. The search of section 9 reads that value to rank candidate actions, and the actor of equation (15)
 is still improved by it, because policy improvement over a behavior policy is what the first term of equation (15) performs.
 
-$$\mathcal{L}_Q(\phi) = \frac{1}{M}\sum_{m=1}^{M}\mathbb{E}_{\mathcal{D}}\Big[\big(Q_{\phi,m}(b,a) - y\big)^2\Big] \tag{13}$$
+$$\mathcal{L}_Q(\phi) = \frac{1}{M}\sum_{m=1}^{M}\mathbb{E}_{\mathcal{D}}\Big[\big(Q_{\phi,m}(\mathrm{sg}(b),\, a) - y\big)^2\Big] \tag{13}$$
 
 Every head trains on the same target and differs only by its initialization. Their disagreement therefore measures how much
-the data constrains the value at that input, which is what equation (28) needs.
+the data constrains the value at that input, which is what equation (28) needs. The belief carries a stop gradient, so the
+critic reads the representation and never shapes it, for the reason equation (22b) gives.
 
 $$a_\theta(b,\xi) = \tanh(u),\ \ u = \mu_\theta(b) + \sigma_\theta(b)\odot\xi,\ \ \xi \sim \mathcal{N}(0,I); \qquad \log \pi(a \mid b) = \log \mathcal{N}(u; \mu_\theta, \sigma_\theta) - \sum_{n=1}^{3}\log\big(1 - \tanh^2 u_n\big) \tag{14}$$
 
@@ -183,7 +184,7 @@ $1 - \tanh^2 u_n$; without it the entropy belongs to the pre squash Gaussian, th
 and $\alpha$ drifts. Use $\log(1 - \tanh^2 u) = 2(\log 2 - u - \mathrm{softplus}(-2u))$, because $1 - \tanh^2 u$ underflows
 for $|u| > 10$.
 
-$$\mathcal{L}_\pi(\theta) = \underbrace{\mathbb{E}_{b,\xi}\left[\alpha \log \pi_\theta\big(a_\theta(b,\xi) \mid b\big) - \frac{1}{M}\sum_{m=1}^{M} Q_{\phi,m}\big(b, a_\theta(b,\xi)\big)\right]}_{\text{SAC}} \ +\ \underbrace{\lambda_{\text{bc}}\,\mathbb{E}_{\mathcal{D}_{\text{off}}}\Big[\big\|\mu^{\tanh}_\theta(b) - a_{\text{data}}\big\|_2^2\Big]}_{\text{behavior cloning}}, \qquad \mu^{\tanh}_\theta(b) = \tanh\big(\mu_\theta(b)\big), \qquad \lambda_{\text{bc}} = 1.0 \tag{15}$$
+$$\mathcal{L}_\pi(\theta) = \underbrace{\mathbb{E}_{\tilde{b},\xi}\left[\alpha \log \pi_\theta\big(a_\theta(\tilde{b},\xi) \mid \tilde{b}\big) - \frac{1}{M}\sum_{m=1}^{M} Q_{\phi,m}\big(\tilde{b}, a_\theta(\tilde{b},\xi)\big)\right]}_{\text{SAC, on } \tilde{b}\, =\, \mathrm{sg}(b)} \ +\ \underbrace{\lambda_{\text{bc}}\,\mathbb{E}_{\mathcal{D}_{\text{off}}}\Big[\big\|\mu^{\tanh}_\theta(b) - a_{\text{data}}\big\|_2^2\Big]}_{\text{cloning, on } b,\ \text{shapes the representation}}, \qquad \mu^{\tanh}_\theta(b) = \tanh\big(\mu_\theta(b)\big), \qquad \lambda_{\text{bc}} = 1.0 \tag{15}$$
 
 Design section 6.4 fixes the first term to the mean over all $M$ heads, so the actor climbs the ensemble's best estimate. The
 target of equation (12) averages a random pair instead, which cuts the variance a single head would carry into the bootstrap.
@@ -263,10 +264,31 @@ perfectly predictable and useless for control. The decoder target $y_{\text{stat
 relative to the robot plus the latch and visible flags, and it carries a stop gradient too, so it reads the latent and never
 shapes it.
 
+**What shapes the representation.** The type encoders and the attention fusion are trained by supervised losses only. There
+are two: the cloning term of equation (15), which does not detach $b$, and a decoder from the belief to the same target.
+
+$$\mathcal{L}_{\text{decb}} = \lambda_{\text{decb}}\,\mathbb{E}_{\mathcal{D}}\Big[\big\|\mathrm{dec}_b(b) - s_{\text{dec}}\big\|_2^2\Big], \quad s_{\text{dec}} = \big(\delta x/A,\ \delta y/A,\ \cos\theta_{\text{rel}},\ \sin\theta_{\text{rel}},\ \ell,\ \mathrm{vis}\big) \in \mathbb{R}^6, \quad \lambda_{\text{decb}} = 1.0 \tag{22b}$$
+
+Note the two decoders. The $\mathrm{dec}$ of equation (22) reads $\mathrm{sg}(z)$ and only reports error, while
+$\mathrm{dec}_b$ reads $b$ undetached and shapes it. The target $s_{\text{dec}}$ is privileged state, available at training
+time only and never at a decision.
+
+A bootstrapped loss that shapes the fusion has a degenerate fixed point where the belief goes constant, because a constant belief makes every target equal and the critic then fits that constant with zero error. Every run
+that let the critic shape the fusion collapsed between steps 3,500 and 5,000, with the belief spread across states halving
+from 1.08 to 0.45 while the raw encoding spread held at 0.07, and the terminal rows fitting 0.23 against a target of 1. The
+belief decoder anchors the belief to the payload pose, which is exactly the quantity the fusion must recover from a teammate's
+message when the own sensor cannot see the payload.
+
+The proposal said the RL losses shape the encoder. This is a deliberate deviation from it, and the failure above is the
+evidence. It is the same degenerate fixed point the stop gradient of equation (22) already guards against on the world model
+side, reached by a different loss.
+
 **Why the stop gradient keeps QWM's claim intact.** The right hand side of the first loss is $e_{t+1}$, the encoding of a
 **real** observation from the buffer, so no imagined quantity appears in any loss. Section 9 uses the model at decision time
-only and discards the tree after the action, so model bias never enters the weights of the policy or the critic. If the model
-is wrong, one action choice is slightly worse and the next step starts from a real observation again.
+only and discards the tree after the action, so model bias never enters the weights of the policy or the critic. Equation
+(22b) does not change this, because $s_{\text{dec}}$ is recorded state and not an imagined quantity, and the world model
+still trains on stop gradient encodings. If the model is wrong, one action choice is slightly worse and the next step starts
+from a real observation again.
 
 $$\hat{z}^{(m+1)} = f_\psi\big(\hat{z}^{(m)}, a_{t+m}, c_{t+m}\big),\ \ \hat{z}^{(0)} = e_t; \qquad \mathcal{E}_k = \mathbb{E}\big\|\hat{z}^{(k)} - e_{t+k}\big\|_2^2, \qquad \mathcal{S}_k = A\cdot\mathbb{E}\big\|\mathrm{dec}_{0:2}(\hat{z}^{(k)}) - \mathrm{dec}_{0:2}(e_{t+k})\big\|_2 \tag{23}$$
 
@@ -303,7 +325,8 @@ Four extra values ride along with each latent: the age fraction $L_j/L_{\max}$ a
 discount an old estimate instead of the designer fixing a weight by hand. The uncertainty $\nu_j$ is **not** a fusion feature
 and serves only the election of equation (28), because the offline buffer has no critic, so a stored uncertainty would mark
 the data source inside every batch and the fusion layer could read it. This is scaled dot product attention from Vaswani et
-al. (2017) over a set of at most 16 vectors, the query comes from the own encoding only, and the design uses 4 heads.
+al. (2017) over a set of at most 16 vectors, the query comes from the own encoding only, and the design uses 4 heads. The
+gradient that trains this layer comes from equations (15) and (22b) alone, never from the critic.
 
 $$b_i = \mathrm{att}_i + \mathrm{MLP}(\mathrm{att}_i) \tag{27}$$
 
