@@ -185,8 +185,10 @@ models a channel with a bounded delay.
 
 `b_i = fuse(e_i, {(z_hat_j, age_j, unc_j, type_j)})`. One multi head attention layer with the own
 encoding as the query and the own encoding plus every estimate as keys and values, then a residual
-MLP. The age, uncertainty, and type of each estimate are concatenated to the value before the key
-and value projections. The output is in the same 64 dimensional space. Permutation invariant over
+MLP. The age and type of each estimate are concatenated to the value before the key and value
+projections. Uncertainty is not a fusion feature: the offline buffer has no critic, so a stored
+uncertainty would mark the data source inside every batch. Uncertainty serves the leader election
+only. The output is in the same 64 dimensional space. Permutation invariant over
 teammates, so team size can change at test time.
 
 ### 6.4 Policy, critic, uncertainty
@@ -219,7 +221,10 @@ One update:
 2. Build beliefs for all `K` robots at `t` and `t + 1` with the current encoders, the message
    procedure of 6.2 at the training staleness `L_train = 1`, and the fusion of 6.3.
 3. Critic loss on `B * K` per robot transitions with the shared team reward.
-4. Actor loss and temperature loss.
+4. Actor loss and temperature loss, plus a behavior cloning term on the offline half of the batch,
+   `bc_weight = 1.0` times the squared error between the policy mean and the recorded action. This
+   is a deviation from RLPD. Under the sparse reward the critic stays flat in the action for far
+   longer than the budget allows, and without the term the actor stayed near zero velocity.
 5. World model loss and decoder loss with stop gradient on the latents.
 6. Polyak update of the target critic with `tau = 0.005`.
 

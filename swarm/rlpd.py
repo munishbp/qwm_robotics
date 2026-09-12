@@ -31,6 +31,10 @@ class RLPDConfig:
     # backs up the entropy term learns to stall. RLPD's backup_entropy=False leaves it out.
     backup_entropy: bool = False
     init_alpha: float = 0.1
+    # Under a sparse reward the critic is flat in the action for a long time, so the actor has no
+    # gradient to follow. A behavior cloning term on the offline half of every batch gives the
+    # actor the scripted behavior while the critic learns the value the search needs.
+    bc_weight: float = 1.0
     obs_mode: str = "belief"  # belief or full
     full_dim: int = 0
 
@@ -78,6 +82,7 @@ class Agent:
             parts.append(self._batch(offline, half))
         d = {k: torch.cat([p[k] for p in parts], 0) for k in parts[0]}
         B, K = d["a"].shape[:2]
+        n_online = parts[0]["a"].shape[0]
 
         # Critic. Target uses the minimum of two random heads, as in RLPD, and the entropy bonus.
         with torch.no_grad():
@@ -100,6 +105,11 @@ class Agent:
         a_new, logp = n.actor.sample(b)
         q_new = n.critic(b, a_new).mean(0)
         actor_loss = (self.alpha.detach() * logp - q_new).mean()
+        bc_loss = torch.zeros((), device=self.device)
+        if offline is not None and cfg.bc_weight > 0:
+            mu = n.actor.mean(b[n_online:])
+            bc_loss = F.mse_loss(mu, d["a"][n_online:])
+            actor_loss = actor_loss + cfg.bc_weight * bc_loss
         self.opt_actor.zero_grad(set_to_none=True)
         actor_loss.backward()
         self.opt_actor.step()
@@ -125,7 +135,7 @@ class Agent:
         return {
             "critic_loss": critic_loss.item(), "actor_loss": actor_loss.item(),
             "alpha": self.alpha.item(), "wm_loss": wm_loss.item(), "dec_loss": dec_loss.item(),
-            "q_mean": q.mean().item(), "entropy": -logp.mean().item(),
+            "q_mean": q.mean().item(), "entropy": -logp.mean().item(), "bc_loss": bc_loss.item(),
         }
 
     def save(self, path: str, extra: dict | None = None) -> None:
