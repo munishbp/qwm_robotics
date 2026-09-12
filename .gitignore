@@ -33,3 +33,5 @@ results/episodes.json
 **/results/*.pid
 **/results/episodes.json
 runs/*_smoke/
+runs/*/run_all.*
+runs/*/*.pid
