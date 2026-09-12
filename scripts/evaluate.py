@@ -36,6 +36,7 @@ def main() -> None:
     p.add_argument("--mode", default="independent")
     p.add_argument("--lag", type=int, default=1)
     p.add_argument("--dropout", type=float, default=0.0)
+    p.add_argument("--policy", choices=["mean", "sample"], default="mean", help="no search policy")
     p.add_argument("--out", default="")
     args = p.parse_args()
     dev = setup(args.seed)
@@ -44,7 +45,7 @@ def main() -> None:
     if args.depth >= 0:
         policy, scfg = "search", SearchConfig(args.depth, args.candidates, args.beam, args.beta, args.mode)
     else:
-        policy, scfg = "mean", None
+        policy, scfg = args.policy, None
     res = evaluate(agent, lambda s: make_env(args.envs, s, False, args.team, dev), belief_cfg, policy, scfg,
                    args.batches, args.seed)
     res["args"] = vars(args)
