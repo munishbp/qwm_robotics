@@ -50,7 +50,9 @@ occlusion test, the message mask, the reset sampling, the success test, and the 
 | Construction with a warm cache | about 5 s |
 | Throughput at 64, 128, 256 envs | 2,900, 6,100, 11,850 env steps per second |
 | GPU memory of the process at 4 to 256 envs | 718 MiB, flat |
-| Scripted controller, 256 envs, speed 2.5 m/s | see `runs/mjlab/results/controls.json` |
+| Scripted controller, 256 envs, speed 2.5 m/s | 83.6 percent success, 78.9 steps on success; single pusher and single gripper 0 |
+| Throughput at 256 envs in the controls script | 14,400 env steps per second |
+| Belief training, 24,000 steps at 256 envs | 66 minutes, best evaluation 48.4 percent |
 
 For comparison the 2D simulator runs 41,600 env steps per second. Training at 256 envs spends
 most of its time in the learner (about 0.15 s per step with 4 updates), so the slower physics

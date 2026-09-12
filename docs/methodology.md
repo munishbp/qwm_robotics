@@ -51,14 +51,15 @@ exchange messages within 6 m unless the payload blocks the line between them. Go
 ## 4. Pipeline
 
 `scripts/run_all.sh` runs every step below in order. Each step is one process. The full run
-takes about 90 minutes on the hardware above.
+takes about 2.5 hours on the 2D simulator and about 3.5 hours on mjlab, on the hardware above.
+`SWARM_SIM=mjlab RUN_DIR=$PWD/runs/mjlab bash scripts/run_all.sh 24000` is the mjlab run.
 
 | Step | Command | Output | Purpose |
 |---|---|---|---|
 | 1 | `scripts/run_controls.py` | `results/controls.json` | Task solvable by the scripted team, unsolvable by one robot, throughput |
 | 2 | `scripts/collect_offline.py --envs 256 --steps 800` | `data/offline.pt` | 204,800 scripted transitions with action noise 0.2 |
-| 3 | `scripts/train.py --obs belief --steps 12000` | `checkpoints/belief_best.pt`, `results/train_belief.jsonl` | The decentralized belief agent. The best checkpoint by evaluation success is the snapshot every sweep uses |
-| 4 | `scripts/train.py --obs full --steps 12000` | `checkpoints/full.pt`, `results/train_full.jsonl` | Centralized full state baseline |
+| 3 | `scripts/train.py --obs belief --steps 12000` (24000 on mjlab) | `checkpoints/belief_best.pt`, `results/train_belief.jsonl` | The decentralized belief agent. The best checkpoint by evaluation success is the snapshot every sweep uses |
+| 4 | `scripts/train.py --obs full --steps 12000` (24000 on mjlab) | `checkpoints/full.pt`, `results/train_full.jsonl` | Centralized full state baseline |
 | 5 | `scripts/world_model_error.py` | `results/wm_error.json` | Open loop latent and decoded error against horizon |
 | 6 | `scripts/evaluate.py --depth -1, 0, 2 --lag 1` | `results/h1_depth*.json` | H1 |
 | 7 | `scripts/sweep.py --which h2 h3 h4 robust transfer` | `results/h2.json` and so on | H2, H3, H4, robustness, transfer |
@@ -70,7 +71,7 @@ takes about 90 minutes on the hardware above.
 | Setting | Value |
 |---|---|
 | Parallel envs | 256 |
-| Batched env steps | 12,000, which is 3.07 million transitions |
+| Batched env steps | 12,000 on 2D (3.07 million transitions), 24,000 on mjlab (6.14 million) |
 | Updates per batched env step | 4 |
 | Batch | 256 rows, half offline and half online, times 6 robots |
 | Critic ensemble | 10 heads, target is the minimum of 2 random heads |
