@@ -230,31 +230,41 @@ One update:
 At every decision step, for every searching robot `i` and every env, batched:
 
 1. Root estimates: `z_i = e_i` fresh, `z_j = rolled message` for every teammate `j`.
-2. Sample `N` candidate own actions from `pi(b_i)` plus the mean action. `N = 8`.
-3. Imagine teammate actions `a_j = mu(fuse(z_j, others))` from the same estimates.
-4. Roll every estimate one step with `f` and the imagined joint action. Compute the child beliefs.
-5. Score the child with `Q(b_child, mu(b_child))`, the mean over the ensemble.
-6. Keep the `J = 4` best paths by the running score. `J` paths expand `N` children each, and the
-   beam keeps `J`.
-7. Repeat to depth `D`.
-8. The score of a root action is the best path from it:
-   `S = (sum_{d=0}^{D} beta^d Q_d) / (sum_{d=0}^{D} beta^d)`, with `Q_0` the root critic value.
-   `beta` is the tree search discount, default `0.5`. `D = 0` or `beta = 0` reduces the search to the
-   critic argmax over the root candidates. The no search baseline is the mean action `mu(b)`, and the
-   sweeps report it as depth `-1`.
-9. Act with the best root action.
+2. Sample `N = 8` candidate own actions from `pi(b_i)` plus the mean action. Imagine every
+   teammate's action as `mu(fuse(z_j, others))` from the same estimates. Each root candidate is a
+   joint action. Its root score is `Q_0 = Q(b_i, a_i)`, the mean over the critic ensemble.
+3. Roll every path one step with `f` and its joint action. Every slot rolls, the own slot
+   included. Fuse the child beliefs.
+4. Add `beta^d Q(b_i^(d), mu(b_i^(d)))` to the path score. Keep the `J = 4` best paths.
+5. Expand every survivor with the mean joint action plus `N` sampled own actions, the teammates
+   again at their imagined mean. Repeat steps 3 to 5 to depth `D`.
+6. The score of a root action is the best path from it:
+   `S = (Q_0 + sum_{d=1}^{D} beta^d Q_d) / (sum_{d=0}^{D} beta^d)`.
+   `beta` is the tree search discount, default `0.5`. `D = 0` or `beta = 0` reduces the search to
+   the critic argmax over the root candidates with no world model call. The no search baseline is
+   the mean action `mu(b)`, and the sweeps report it as depth `-1`.
+7. Act with the best root action.
 
-Teammate estimates roll forward one step per depth together with the own belief, so the staleness
-of a teammate estimate is the same at every depth.
+Every candidate is rolled before it is scored, so the number of world model calls grows with the
+number of candidates: `(N + 1) K` calls at depth 1 and `J (N + 1) K` at every deeper level, per
+searching robot. Teammate estimates roll forward one step per depth together with the own belief
+and their age features stay fixed, so the staleness of a teammate estimate is the same at every
+depth. Rows are processed in chunks of 512 to bound memory.
 
-Sweep values: depth `-1, 0, 1, 2, 4, 6`, staleness `0, 1, 2, 4`, beta `0.1` to `1.0`.
+Sweep values: depth `-1, 0, 1, 2, 4, 6`, staleness `0, 1, 2, 4`, beta `0.0` to `1.0`.
 
 Leader modes for H4:
 
 - `independent`: every robot searches its own action. Compute per step is `K` searches.
-- `leader`: the robot with the lowest `unc_i` searches over joint candidates and broadcasts. The
-  leader samples `N * K` joint candidates so the compute matches.
-- `round_robin`: the leader index is `t mod K`, same joint search.
+- `leader`: every robot `i` elects the lowest entry of its own uncertainty row, which holds its
+  own uncertainty fresh and every teammate's as of the message. A robot that elects itself runs one
+  search over joint candidates with `N K` samples per node and broadcasts the joint action. A robot
+  that elected someone else executes its slot of that leader's broadcast, or its mean action when
+  its elected leader did not elect itself. Because every candidate is rolled, one joint search
+  costs the same as `K` independent searches. The evaluation reports the leader disagreement rate
+  (the share of robots whose choice differs from the election under fresh uncertainty), the number
+  of searches per env, and the share of robots following a leader.
+- `round_robin`: the leader index is `t mod K` for every robot, same joint search.
 
 ## 8. Differences from the proposal
 
