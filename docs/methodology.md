@@ -6,12 +6,19 @@ design choice are in `design.md`. The equations are in `math.md`. The numbers ar
 
 ## 1. Scope
 
-The proposal targets mjlab (MuJoCo Warp). This study runs the same method on a batched 2D rigid
-body transport simulator written in PyTorch (`swarm/env.py`). The proposal's risk section asks
-for a trivial version of the task before the full one, and this is it. Every hypothesis concerns
-the search mechanism under decentralization and staleness, not contact physics, so the 2D task
-keeps the question intact. Moving the same code to mjlab is future work and needs only a new env
-class with the API in `design.md` section 3.6.
+The proposal targets mjlab (MuJoCo Warp). The main study runs the method on a batched 2D rigid
+body transport simulator written in PyTorch (`swarm/env.py`), which the proposal's risk section
+asks for as the first version. Every hypothesis concerns the search mechanism under
+decentralization and staleness, not contact physics, so the 2D task keeps the question intact.
+
+The same task also runs on mjlab (`swarm/env_mjlab.py`) with the identical interface, observation
+layout, message model, and success test, and real contact physics: an 8 kg box with Coulomb
+friction 0.5, pushers that push through contact under a 10 N force limit, grippers that latch
+kinematically and pull with 3 N while unloading the payload by 25 N each, and static walls. The
+friction facts of `design.md` section 3.3 hold in that physics (tests in
+`tests/test_env_mjlab.py`). `SWARM_SIM=mjlab` selects it in every script. The mjlab robots run at
+2.5 m/s instead of 1.5 because a velocity servo accelerates and the 2D robots move instantly;
+every other constant is shared. See `mjlab_port.md` for the mapping and its measurements.
 
 ## 2. Hardware and software
 

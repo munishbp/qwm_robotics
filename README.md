@@ -28,7 +28,8 @@ A primer on every concept the proposal depends on is in [concepts.md](concepts.m
 ## Stack
 
 - PyTorch 2.9 (CUDA 12.8) on one RTX 5090, driver 610.43.02
-- A batched 2D rigid body transport simulator in PyTorch (`swarm/env.py`)
+- A batched 2D rigid body transport simulator in PyTorch (`swarm/env.py`), and the same task on
+  mjlab (MuJoCo Warp) in `swarm/env_mjlab.py`
 - RLPD, an off policy Q learning base, with a latent world model and test time tree search
 - Locked dependencies in `uv.lock` and `pylock.toml`
 
@@ -37,10 +38,19 @@ A primer on every concept the proposal depends on is in [concepts.md](concepts.m
 ```
 uv venv --python 3.13 .venv && uv pip install --python .venv/bin/python -e .
 .venv/bin/python -m pytest tests -q
-bash scripts/run_all.sh          # about 90 minutes on one RTX 5090
-.venv/bin/python scripts/plot.py # figures/*.png
-.venv/bin/python viewer/build.py # figures/viewer.html, the interactive replay
+bash scripts/run_all.sh          # 2D simulator, about 2.5 hours on one RTX 5090
 ```
+
+The same pipeline on mjlab (MuJoCo Warp), which needs the optional dependency:
+
+```
+uv pip install --python .venv/bin/python -e ".[mjlab]"
+.venv/bin/python -m pytest tests/test_env_mjlab.py -q
+SWARM_SIM=mjlab RUN_DIR=$PWD/runs/mjlab bash scripts/run_all.sh
+```
+
+Every step of `run_all.sh` skips when its output exists, so a rerun resumes. Results land in
+`results/` (or `runs/mjlab/results/`), checkpoints in `checkpoints/`, figures in `figures/`.
 
 Every script calls `swarm.compute.limit_memory()` first, which caps the process at a quarter of the
 GPU and starts a host memory watchdog. Results land in `results/`, checkpoints in `checkpoints/`.
@@ -50,6 +60,7 @@ GPU and starts a host memory watchdog. Results land in `results/`, checkpoints i
 | Path | Content |
 |---|---|
 | `swarm/env.py`, `swarm/scripted.py` | The task and the scripted centralized controller |
+| `swarm/env_mjlab.py` | The task on mjlab (MuJoCo Warp), same interface |
 | `swarm/nets.py` | Encoders, attention fusion, actor, critic ensemble, world model, decoder |
 | `swarm/buffer.py`, `swarm/belief.py` | Per env timelines, message tables, forward correction, fusion |
 | `swarm/rlpd.py` | The RLPD update |
