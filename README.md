@@ -11,24 +11,53 @@ The full proposal, hypotheses, method, baselines, and schedule are in
 
 A primer on every concept the proposal depends on is in [concepts.md](concepts.md).
 
+## Documents
+
+| File | Content |
+|---|---|
+| [proposal_shared_latent_swarm_transport.md](proposal_shared_latent_swarm_transport.md) | The research proposal and hypotheses H1 to H4 |
+| [concepts.md](concepts.md) | Plain language primer on every concept |
+| [docs/design.md](docs/design.md) | The fixed system design: env, buffer, beliefs, world model, search, protocol |
+| [docs/math.md](docs/math.md) | Every equation with its reason |
+| [docs/methodology.md](docs/methodology.md) | The replicable experiment methodology |
+| [docs/results.md](docs/results.md) | Results, figures, and the verdict on each hypothesis |
+
 ## Stack
 
-- mjlab (MuJoCo Warp physics)
-- PyTorch
-- RLPD, an off policy Q learning base
-- Single RTX 5090
+- PyTorch 2.9 (CUDA 12.8) on one RTX 5090, driver 610.43.02
+- A batched 2D rigid body transport simulator in PyTorch (`swarm/env.py`)
+- RLPD, an off policy Q learning base, with a latent world model and test time tree search
+- Locked dependencies in `uv.lock` and `pylock.toml`
+
+## Replicate
+
+```
+uv venv --python 3.13 .venv && uv pip install --python .venv/bin/python -e .
+.venv/bin/python -m pytest tests -q
+bash scripts/run_all.sh          # about 90 minutes on one RTX 5090
+.venv/bin/python scripts/plot.py # figures/*.png
+.venv/bin/python viewer/build.py # figures/viewer.html, the interactive replay
+```
+
+Every script calls `swarm.compute.limit_memory()` first, which caps the process at a quarter of the
+GPU and starts a host memory watchdog. Results land in `results/`, checkpoints in `checkpoints/`.
+
+## Layout
+
+| Path | Content |
+|---|---|
+| `swarm/env.py`, `swarm/scripted.py` | The task and the scripted centralized controller |
+| `swarm/nets.py` | Encoders, attention fusion, actor, critic ensemble, world model, decoder |
+| `swarm/buffer.py`, `swarm/belief.py` | Per env timelines, message tables, forward correction, fusion |
+| `swarm/rlpd.py` | The RLPD update |
+| `swarm/search.py` | Multi agent tree search with imagined teammates |
+| `swarm/rollout.py`, `swarm/evaluate.py` | The shared env loop and the evaluation protocol |
+| `scripts/` | Controls, collection, training, evaluation, sweeps, plots, episode recording |
+| `viewer/` | The three.js episode viewer |
+| `tests/` | Unit tests for the env and the learning modules |
 
 ## Branches
 
-One branch per phase of the schedule. Each phase merges into `main` before the next phase starts.
-Rebase a phase branch on `main` when its week begins.
-
-| Branch | Week | Owns |
-|---|---|---|
-| `env` | 1 | mjlab task, negative control, scripted controller, offline buffer |
-| `rlpd` | 2 | Off policy loop with a concatenated observation |
-| `beliefs` | 3 | Type specific encoders, attention fusion, lag, uncertainty heads |
-| `world-model` | 4 | Residual dynamics model pretraining and error curves |
-| `search` | 5 | Multi agent tree search, the H1 result |
-| `experiments` | 6 to 7 | H2 grid, H3 sweep, H4 leader variants, robustness, transfer |
-| `writeup` | 8 | Figures and the final report |
+The proposal planned one branch per phase. The work was done in one session, so every phase
+landed on `main` in order as separate commits. The phase branches stay as empty markers of the
+original plan.
