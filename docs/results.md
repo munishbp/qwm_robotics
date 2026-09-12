@@ -51,7 +51,24 @@ Run 9 is the snapshot. Its training curve is `figures/learning_curves.png`.
 The task is solvable by the scripted centralized controller and unsolvable by a single robot of
 either type, as designed. The learner reaches half the scripted success rate in 27 minutes.
 
-TABLES_CONTROLS_TRAINING
+### Controls (256 envs)
+
+| Control | Success (%) | Length on success | Position error (m) | Angle error (rad) |
+|---|---|---|---|---|
+| scripted_full_team | 99.6 | 91.4 | 0.274 | 0.081 |
+| single_pusher | 0.0 | - | 2.227 | 0.404 |
+| single_gripper | 0.0 | - | 2.227 | 0.404 |
+
+Throughput: 41,627 env steps per second at 256 envs.
+
+### Training
+
+| Run | Transitions | Final eval success | Best eval success | Wall minutes |
+|---|---|---|---|---|
+| belief | 3,072,000 | 46.9 | 51.2 | 27 |
+| full | 3,072,000 | 28.9 | 28.9 | 9 |
+| full36k | 9,216,000 | 72.3 | 77.3 | 55 |
+
 
 The full state baseline learns more slowly than the belief agent at 12,000 steps. It is a single
 seed and it was still rising at the end, so it says nothing about partial observability yet. A
@@ -70,11 +87,30 @@ decoder's own floor, and it grows to 0.44 m at eight steps against 0.50 m for co
 learns payload motion, but its advantage over copying is modest, which bounds what any search on
 it can add.
 
-TABLE_WM
+### World model open loop error
+
+| Horizon | Latent MSE | Copy latent MSE | Decoded position error (m) | Copy position error (m) | Decoded angle error (rad) |
+|---|---|---|---|---|---|
+| 1 | 0.0013 | 0.0022 | 0.204 | 0.217 | 0.071 |
+| 2 | 0.0035 | 0.0066 | 0.234 | 0.257 | 0.086 |
+| 3 | 0.0063 | 0.0108 | 0.260 | 0.289 | 0.114 |
+| 4 | 0.0086 | 0.0152 | 0.290 | 0.322 | 0.144 |
+| 6 | 0.0148 | 0.0268 | 0.372 | 0.414 | 0.203 |
+| 8 | 0.0220 | 0.0376 | 0.441 | 0.496 | 0.252 |
+
 
 ## 5. H1: search against no search
 
-TABLE_H1
+### H1: search against no search at lag 1 (256 envs, 3 batches)
+
+| Setting | Success (%) | Length on success | ms per step |
+|---|---|---|---|
+| no search (mean action) | 52.3 ± 0.5 | 98.3 | 13.5 |
+| depth 0 (critic argmax) | 42.3 ± 1.4 | 101.0 | 27.5 |
+| depth 2 search | 43.2 ± 2.3 | 104.5 | 118.9 |
+
+H1 verdict: depth 2 minus no search = -9.1 points, 2 SE = 4.6 points, **refuted (search is worse)**.
+
 
 **Verdict: refuted.** Both search arms are nine to ten points below the mean action, far outside
 noise. The two arms are indistinguishable from each other, so the world model rollout neither
@@ -95,7 +131,23 @@ cannot, and the search inherits that.
 
 ## 6. H2: depth against staleness
 
-TABLE_H2
+### H2: success (%) by staleness (rows) and depth (columns), beta 0.5
+
+| Lag | no search | D=0 | D=1 | D=2 | D=4 | D=6 | best depth |
+|---|---|---|---|---|---|---|---|
+| 0 | 38.8 ± 2.3 | 31.5 ± 1.4 | 33.6 ± 1.4 | 33.6 ± 2.4 | 37.2 ± 1.7 | 34.6 ± 1.7 | 4 |
+| 1 | 50.3 ± 2.6 | 42.7 ± 3.8 | 42.7 ± 1.7 | 45.6 ± 2.5 | 45.6 ± 1.4 | 45.1 ± 0.7 | 2 |
+| 2 | 63.8 ± 1.8 | 52.3 ± 2.4 | 48.2 ± 0.5 | 50.8 ± 2.5 | 49.7 ± 1.9 | 47.9 ± 2.5 | 0 |
+| 4 | 61.7 ± 2.8 | 51.6 ± 1.2 | 38.3 ± 1.6 | 40.1 ± 3.9 | 43.0 ± 0.8 | 42.4 ± 1.7 | 0 |
+
+Best depth per lag: {0: 4, 1: 2, 2: 0, 4: 0}. H2 verdict: **confirmed** (non increasing: True, drop from lag 0 to 4: True).
+
+Cost of one step of imagination (depth 1 minus depth 0, points): lag 0: +2.1, lag 1: +0.0, lag 2: -4.2, lag 4: -13.3.
+
+Best search cell minus no search (points): lag 0: -1.6, lag 1: -4.7, lag 2: -11.5, lag 4: -10.2.
+
+Cost: ms per step by depth at lag 1: D=-1: 25, D=0: 26, D=1: 32, D=2: 68, D=4: 143, D=6: 218.
+
 
 **Verdict by the decision rule: confirmed.** The best depth per lag is 4, 2, 0, 0 for lags 0, 1,
 2, 4. It is non increasing and it drops from lag 0 to lag 4.
@@ -126,7 +178,17 @@ Cost: the no search step costs 25 ms for 128 envs, depth 2 costs 68 ms, depth 6 
 
 ## 7. H3: tree search discount against staleness
 
-TABLE_H3
+### H3: success (%) by staleness (rows) and tree search discount beta (columns), depth 2
+
+| Lag | beta=0.0 | beta=0.1 | beta=0.3 | beta=0.5 | beta=0.7 | beta=0.9 | beta=1.0 | best beta |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 31.0 ± 2.3 | 30.7 ± 2.1 | 30.5 ± 1.8 | 34.4 ± 0.9 | 34.4 ± 2.8 | 34.9 ± 2.5 | 36.5 ± 0.7 | 1.0 |
+| 1 | 42.2 ± 2.5 | 45.3 ± 2.4 | 42.7 ± 0.7 | 44.3 ± 2.1 | 47.1 ± 0.7 | 45.3 ± 2.3 | 43.5 ± 0.3 | 0.7 |
+| 2 | 51.0 ± 1.1 | 49.7 ± 1.1 | 51.6 ± 0.0 | 50.0 ± 0.5 | 50.3 ± 0.9 | 50.0 ± 1.4 | 51.3 ± 2.1 | 0.3 |
+| 4 | 48.7 ± 2.6 | 45.6 ± 1.1 | 41.7 ± 3.1 | 41.1 ± 3.9 | 44.0 ± 3.1 | 41.7 ± 3.5 | 41.1 ± 2.8 | 0.0 |
+
+Best beta per lag: {0: 1.0, 1: 0.7, 2: 0.3, 4: 0.0}. H3 verdict: **confirmed** (non increasing: True).
+
 
 **Verdict by the decision rule: confirmed.** The best tree search discount per lag is 1.0, 0.7,
 0.3, 0.0 for lags 0, 1, 2, 4, which is non increasing. At lag 0 the full weight on imagined
@@ -142,7 +204,19 @@ information is fresh and worth nothing when it is four frames old.
 
 ## 8. H4: leader election at matched compute
 
-TABLE_H4
+### H4: leader election at matched compute, depth 2
+
+| Lag | Mode | Success (%) | ms per step | Searches per env | Robots following | Leader disagreement |
+|---|---|---|---|---|---|---|
+| 1 | independent | 44.0 ± 2.1 | 68 | 6.00 | 1.00 | 0.00 |
+| 1 | leader | 50.0 ± 3.4 | 68 | 0.98 | 0.56 | 0.50 |
+| 1 | round_robin | 27.3 ± 2.1 | 69 | 1.00 | 1.00 | 0.00 |
+| 4 | independent | 41.7 ± 1.0 | 67 | 6.00 | 1.00 | 0.00 |
+| 4 | leader | 50.3 ± 3.6 | 68 | 0.96 | 0.52 | 0.55 |
+| 4 | round_robin | 18.2 ± 0.3 | 70 | 1.00 | 1.00 | 0.00 |
+
+H4 verdict: **confirmed**.
+
 
 **Verdict by the decision rule: confirmed at lag 4 and marginal at lag 1.** Leader elected search
 scores 50.0 against 44.0 for independent search at lag 1 (gap 6.0, 2 SE 8.0) and 50.3 against
@@ -162,18 +236,72 @@ Compute is matched as designed: 68 ms per step in every mode.
 
 ## 9. Robustness and transfer
 
-TABLE_ROBUST
+### Robustness: message dropout at lag 1
 
-TABLE_TRANSFER
+| dropout | no search (%) | depth 2 search (%) |
+|---|---|---|
+| 0.0 | 50.3 ± 2.6 | 43.8 ± 4.3 |
+| 0.1 | 55.7 ± 1.8 | 44.8 ± 1.6 |
+| 0.25 | 59.4 ± 3.6 | 46.6 ± 1.3 |
+| 0.5 | 63.5 ± 1.1 | 46.6 ± 0.7 |
+
+
+### Transfer: team composition at lag 1 (trained on the default team)
+
+| team | no search (%) | depth 2 search (%) |
+|---|---|---|
+| default | 50.3 ± 2.6 | 42.4 ± 1.4 |
+| p2g1s1 | 0.0 ± 0.0 | 0.0 ± 0.0 |
+| p4g4s1 | 89.1 ± 1.6 | 85.9 ± 2.8 |
+| p6g5s1 | 92.7 ± 1.4 | 85.4 ± 1.9 |
+| p8g7s1 | 95.6 ± 1.8 | 89.6 ± 1.3 |
+
+### Ablations on the snapshot (128 envs, 3 batches)
+
+| Setting | Success (%) | Length on success |
+|---|---|---|
+| no search, lag 0 | 38.8 ± 2.3 | 96.2 |
+| no search, lag 1 | 50.3 ± 2.6 | 98.6 |
+| no search, lag 2 | 63.8 ± 1.8 | 99.0 |
+| no search, lag 4 | 61.7 ± 2.8 | 103.3 |
+| no search, lag 6 | 58.1 ± 0.5 | 105.4 |
+| no search, lag 8 | 55.2 ± 1.8 | 104.5 |
+| messages masked, lag 1 | 13.5 ± 2.6 | 100.9 |
+| messages masked, lag 2 | 13.5 ± 2.6 | 100.9 |
+| messages masked, lag 4 | 13.5 ± 2.6 | 100.9 |
+| sampled policy, lag 1 | 62.2 ± 1.4 | 106.8 |
+| sampled policy, lag 2 | 66.9 ± 0.5 | 106.5 |
+
 
 **Message dropout helps the no search baseline** (50.3, 55.7, 59.4, 63.5 at dropout 0, 0.1,
 0.25, 0.5) and leaves search flat around 44 to 47. This is the staleness effect of H2 seen from
 the other side: a dropped message leaves an older entry in the table, and the fusion does better
 with older entries.
 
-TRANSFER_TEXT
+**Transfer to larger teams is the strongest positive result.** The policy trained on 3 pushers, 2
+grippers, and 1 scout runs zero shot on 9, 12, and 16 robots (4+4+1, 6+5+1, 8+7+1) at 89.1, 92.7,
+and 95.6 percent without search. The attention fusion and the pooled action context are
+permutation invariant and size agnostic by construction, and this shows the learned weights are
+too. More robots also mean more force against the friction threshold, which is part of the gain.
+The 4 robot team (2 pushers, 1 gripper, 1 scout) scores zero by construction: two pushers plus
+one latched gripper produce 2.3 N against a 2.5 N threshold, so no policy can move the payload.
+It is a negative control that landed in the transfer grid, not a transfer failure. Search stays
+below no search at every size, and its cost grows with the square of the team size (474 ms per
+step at 16 robots).
 
-ABLATION_TEXT
+**Messages are essential, and the fusion prefers them two to four frames old.** With every
+teammate estimate masked out of the fusion the mean policy scores 13.5 percent at any lag,
+against 50.3 with messages at lag 1. The no search curve against staleness peaks at lag 2
+(63.8) and declines slowly to 55.2 at lag 8. Two facts follow. First, the belief pipeline works:
+messages carry the payload position to robots that cannot see it, and the forward correction
+keeps that information usable up to eight frames old. Second, the fusion trained at lag 1 is
+better served by older estimates. The rolled forward estimate is the output of the world model,
+which is smoother than a raw encoding, and the age feature lets the fusion down weight it, so the
+robot leans more on its own sensor. Which of the two is the cause is not separated here.
+
+**The sampled policy beats the mean policy** by 12 points at lag 1 and 3 points at lag 2. Action
+noise breaks robots out of stuck contact configurations. This is also why the critic argmax of
+H1 is doubly disadvantaged: it removes the noise and it selects the most extreme candidates.
 
 ## 10. Figures and the interactive replay
 
@@ -190,7 +318,33 @@ ABLATION_TEXT
 
 ## 11. Conclusions
 
-CONCLUSIONS
+1. **Test time world model search does not help this decentralized team, and the reason is the
+   critic, not the model.** The critic's values across the policy's own candidates span 0.003, so
+   the argmax that both QWM and this search rest on amplifies noise and picks extreme actions.
+   Depth 0 (no model at all) already loses ten points, and rolling the model adds nothing on top.
+   The model itself is sound: it beats the copy baseline at every horizon. QWM's mechanism
+   requires a critic that ranks actions, and under sparse reward with a short budget this critic
+   ranks states, not actions. That is the boundary of the method this study maps.
+
+2. **The staleness effects H2 and H3 predicted are real and measurable even below the baseline.**
+   One step of imagining teammates costs +2.1 points at lag 0 and −13.3 at lag 4, and the useful
+   weight on imagined value falls from 1.0 at lag 0 to 0.0 at lag 4. Imagined teammate error grows
+   with staleness while model error does not change, which is the claim of the proposal.
+
+3. **Leader election does not rescue a broadcast joint search.** Everyone following one leader's
+   search (round robin) is the worst setting in the study. The apparent win of elected leaders
+   comes from the half of the team that falls back to the plain policy.
+
+4. **The belief pipeline is the part that works.** Messages raise success from 13.5 to 50 percent,
+   the forward correction keeps eight frame old messages useful, and the permutation invariant
+   fusion transfers zero shot to teams up to 16 robots at 96 percent success.
+
+5. **Getting an off policy learner to train at all on this task took nine documented changes**,
+   each a way the RLPD and QWM recipe breaks under sparse reward and partial observability:
+   entropy backup, action flat critics, out of distribution bootstrap actions, ensemble
+   pessimism compounding over long horizons, and bootstrapped representation collapse. The final
+   recipe (SARSA target, target copies of the representation, two supervised anchors, checkpoint
+   selection) is recorded in `design.md` and `math.md`.
 
 ## 12. Limitations
 
