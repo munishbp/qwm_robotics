@@ -1,0 +1,34 @@
+{
+  "args": {
+    "obs": "full",
+    "envs": 256,
+    "steps": 12000,
+    "utd": 4,
+    "lag": 1,
+    "offline": "data/offline.pt",
+    "no_offline": false,
+    "collect_depth": -1,
+    "eval_every": 500,
+    "eval_envs": 128,
+    "seed": 0,
+    "out": "full",
+    "smoke": false
+  },
+  "last": {
+    "step": 12000,
+    "transitions": 3072000,
+    "train_success": 0.486905916585839,
+    "eval_success": 0.2890625,
+    "eval_length": 91.31724137931033,
+    "wall_min": 9.41220763127009,
+    "critic_loss": 0.000633884803391993,
+    "actor_loss": -0.46154341101646423,
+    "alpha": 0.00012795536895282567,
+    "wm_loss": 0.11020492017269135,
+    "dec_loss": 0.00032937826472334564,
+    "q_mean": 0.46356067061424255,
+    "entropy": -2.91768217086792,
+    "bc_loss": 0.06989693641662598,
+    "dec_b_loss": 0.0002864097186829895
+  }
+}

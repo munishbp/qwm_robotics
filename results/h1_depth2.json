@@ -1,0 +1,33 @@
+{
+  "success": 0.4322916666666667,
+  "success_se": 0.02259030152721025,
+  "length_on_success": 104.46969124517874,
+  "length_on_success_se": 0.9565865472248681,
+  "pos_error": 0.8888392249743143,
+  "pos_error_se": 0.019232339346717035,
+  "angle_error": 0.27082565426826477,
+  "angle_error_se": 0.004538755712306654,
+  "ms_per_step": 118.88603952195909,
+  "ms_per_step_se": 2.8915006348084082,
+  "finished": 1.0,
+  "finished_se": 0.0,
+  "envs": 256.0,
+  "envs_se": 0.0,
+  "batches": 3,
+  "args": {
+    "ckpt": "checkpoints/belief_best.pt",
+    "envs": 256,
+    "batches": 3,
+    "team": "default",
+    "seed": 1000,
+    "depth": 2,
+    "beta": 0.5,
+    "candidates": 8,
+    "beam": 4,
+    "mode": "independent",
+    "lag": 1,
+    "dropout": 0.0,
+    "policy": "mean",
+    "out": "results/h1_depth2.json"
+  }
+}

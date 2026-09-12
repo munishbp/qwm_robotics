@@ -1,0 +1,33 @@
+{
+  "num_envs": 256,
+  "device": "cuda",
+  "seed": 0,
+  "scripted_full_team": {
+    "num_envs": 256,
+    "success_rate": 0.99609375,
+    "mean_success_length": 91.39608764648438,
+    "mean_pos_error": 0.274087131023407,
+    "mean_angle_error": 0.08102282881736755
+  },
+  "single_pusher": {
+    "num_envs": 256,
+    "success_rate": 0.0,
+    "mean_success_length": null,
+    "mean_pos_error": 2.2273991107940674,
+    "mean_angle_error": 0.40368324518203735
+  },
+  "single_gripper": {
+    "num_envs": 256,
+    "success_rate": 0.0,
+    "mean_success_length": null,
+    "mean_pos_error": 2.2273991107940674,
+    "mean_angle_error": 0.40368324518203735
+  },
+  "throughput": {
+    "num_envs": 256,
+    "steps": 300,
+    "seconds": 1.8449663820210844,
+    "batched_steps_per_second": 162.60458885508928,
+    "env_steps_per_second": 41626.774746902855
+  }
+}

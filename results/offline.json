@@ -1,0 +1,7 @@
+{
+  "transitions": 204800,
+  "episodes": 1920,
+  "success_rate": 0.9880208333333333,
+  "noise": 0.2,
+  "envs": 256
+}

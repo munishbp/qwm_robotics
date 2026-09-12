@@ -314,7 +314,7 @@ H1 is doubly disadvantaged: it removes the noise and it selects the most extreme
 | `figures/h4_leader.png` | H4 success and cost by mode and lag |
 | `figures/robust_dropout.png`, `figures/transfer_team.png` | Message dropout and team size transfer |
 | `figures/search_cost.png` | Milliseconds per decision step against depth |
-| `figures/viewer.html` | three.js replay of recorded episodes: payload, goal, robots by type, latch lines, and message links colored by staleness, with a side by side mode to compare settings from the same start |
+| `figures/viewer.html` (published at https://claude.ai/code/artifact/b4442525-6e3f-4a68-8b0b-cf80dc7e8982) | three.js replay of recorded episodes: payload, goal, robots by type, latch lines, and message links colored by staleness, with a side by side mode to compare settings from the same start |
 
 ## 11. Conclusions
 

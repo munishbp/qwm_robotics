@@ -23,3 +23,7 @@ data/
 .DS_Store
 figures/*.tmp
 results/*.tmp
+results/logs/
+results/run_all.*
+results/*.pid
+results/episodes.json

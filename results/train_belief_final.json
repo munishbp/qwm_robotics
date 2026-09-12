@@ -1,0 +1,34 @@
+{
+  "args": {
+    "obs": "belief",
+    "envs": 256,
+    "steps": 12000,
+    "utd": 4,
+    "lag": 1,
+    "offline": "data/offline.pt",
+    "no_offline": false,
+    "collect_depth": -1,
+    "eval_every": 500,
+    "eval_envs": 128,
+    "seed": 0,
+    "out": "belief",
+    "smoke": false
+  },
+  "last": {
+    "step": 12000,
+    "transitions": 3072000,
+    "train_success": 0.7057745187901008,
+    "eval_success": 0.46875,
+    "eval_length": 100.72321428571428,
+    "wall_min": 26.916473400592803,
+    "critic_loss": 0.00044647027971222997,
+    "actor_loss": -0.5615108013153076,
+    "alpha": 0.00010488467523828149,
+    "wm_loss": 0.0017094786744564772,
+    "dec_loss": 0.006562781520187855,
+    "q_mean": 0.5645885467529297,
+    "entropy": -3.035038709640503,
+    "bc_loss": 0.06129780039191246,
+    "dec_b_loss": 0.00041652124491520226
+  }
+}
