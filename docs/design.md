@@ -270,10 +270,10 @@ at least 3 evaluation batches, with the standard error.
 |---|---|---|
 | Controls | `scripts/run_controls.py` | `results/controls.json` |
 | Offline buffer | `scripts/collect_offline.py` | `data/offline.pt` (ignored by git) |
-| Train centralized and decentralized | `scripts/train.py --obs full`, `--obs belief` | `results/train_*.json`, `checkpoints/*.pt` |
+| Train centralized and decentralized | `scripts/train.py --obs full`, `--obs belief` | `results/train_*.jsonl`, `checkpoints/*.pt` |
 | World model error | `scripts/world_model_error.py` | `results/wm_error.json` |
 | H1 | `scripts/evaluate.py --depth 0` and `--depth 2` | `results/h1.json` |
-| H2 | `scripts/sweep.py --grid depth x lag` | `results/h2.json` |
-| H3 | `scripts/sweep.py --grid beta x lag` | `results/h3.json` |
-| H4 | `scripts/sweep.py --leader` | `results/h4.json` |
+| H2 | `scripts/sweep.py --which h2` | `results/h2.json` |
+| H3 | `scripts/sweep.py --which h3` | `results/h3.json` |
+| H4 | `scripts/sweep.py --which h4` | `results/h4.json` |
 | Figures | `scripts/plot.py` | `figures/*.png` |
