@@ -31,7 +31,7 @@ from common import TEAMS, env_config, make_env  # noqa: E402
 from swarm.env import DEFAULT_TEAM, TYPE_GRIPPER, TYPE_PUSHER, TransportEnv  # noqa: E402
 from swarm.scripted import ScriptedController  # noqa: E402
 
-RESULTS = pathlib.Path(__file__).resolve().parents[1] / "results" / "controls.json"
+RESULTS = pathlib.Path("results") / "controls.json"  # relative to the run directory
 WARMUP_STEPS = 20
 TIMED_STEPS = 300
 
