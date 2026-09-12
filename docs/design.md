@@ -36,7 +36,8 @@ The team has `K` robots. Types: `0 pusher`, `1 gripper`, `2 scout`. The default 
 - Robots: discs of radius `0.2` m. State is position `(x, y)`. No heading.
 - Time step `dt = 0.1` s. Episode length `T = 150` steps.
 - Goal: a pose `(gx, gy, gtheta)`. Reset samples the payload pose and a goal at distance 2.5 to
-  4.0 m with a random relative angle in `[-pi/2, pi/2]`. Robots start at random positions at least
+  4.0 m. The goal orientation differs from the start orientation by a random angle in
+  `[-pi/2, pi/2]`. Robots start at random positions at least
   1.0 m from the payload.
 
 ### 3.2 Actions
@@ -165,8 +166,15 @@ initialized at reset with every teammate's step 0 encoding, so no entry is ever 
 
 At step `t` with staleness `L`, robot `i` uses the message from step `t - L`. Forward correction
 rolls the message forward `L` steps with the world model. Step one uses the recorded action from
-the message. Every later step uses an imagined action `pi(fuse(z_hat))`. This matches what the
-search does, so training and execution use the same procedure.
+the message. Every later step uses the mean action of the policy on the self only belief of the
+estimate. The action context during the roll pools the recorded actions of the other messages in
+the same table and stays fixed, because the receiver has no newer information. The receiver does
+not see the sender's own table, so this is an approximation, and it is the same one the search
+makes.
+
+Delivery: a message sent at `t - L` arrives if the link is up at `t` and it survives the dropout
+draw. A robot that hears nothing keeps its older entry. Ages are capped at `AGE_MAX = 8`, which
+models a channel with a bounded delay.
 
 ### 6.3 Fusion
 
@@ -181,7 +189,8 @@ teammates, so team size can change at test time.
 - Actor: tanh Gaussian `pi(a | b)`, hidden 256, 2 layers.
 - Critic ensemble: `M = 10` heads `Q_m(b, a)`, hidden 256, 2 layers, LayerNorm after each hidden
   layer, implemented with batched weights so one forward pass evaluates all heads.
-- Target: mean of two random heads, as in RLPD. Actor objective uses the mean over all heads.
+- Target: minimum of two random heads, as in RLPD. Actor objective uses the mean over all heads.
+- Discount `gamma = 0.99`. Adam with learning rate `3e-4` for every module. Fusion has 4 heads.
 - Uncertainty `unc_i = std_m Q_m(b_i, mu(b_i))`, the critic ensemble spread at the mean action.
 - Entropy temperature `alpha` is learned with target entropy `-3`.
 
@@ -223,11 +232,15 @@ At every decision step, for every searching robot `i` and every env, batched:
 7. Repeat to depth `D`.
 8. The score of a root action is the best path from it:
    `S = (sum_{d=0}^{D} beta^d Q_d) / (sum_{d=0}^{D} beta^d)`, with `Q_0` the root critic value.
-   `beta` is the tree search discount. `D = 0` or `beta = 0` recovers the plain policy.
+   `beta` is the tree search discount, default `0.5`. `D = 0` or `beta = 0` reduces the search to the
+   critic argmax over the root candidates. The no search baseline is the mean action `mu(b)`, and the
+   sweeps report it as depth `-1`.
 9. Act with the best root action.
 
 Teammate estimates roll forward one step per depth together with the own belief, so the staleness
 of a teammate estimate is the same at every depth.
+
+Sweep values: depth `-1, 0, 1, 2, 4, 6`, staleness `0, 1, 2, 4`, beta `0.1` to `1.0`.
 
 Leader modes for H4:
 

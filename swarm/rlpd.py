@@ -72,12 +72,12 @@ class Agent:
         d = {k: torch.cat([p[k] for p in parts], 0) for k in parts[0]}
         B, K = d["a"].shape[:2]
 
-        # Critic. Target uses the mean of two random heads and the entropy bonus.
+        # Critic. Target uses the minimum of two random heads, as in RLPD, and the entropy bonus.
         with torch.no_grad():
             a_next, logp_next = n.actor.sample(d["b_next"])
             q_t = n.critic_target(d["b_next"], a_next)
             pair = torch.randperm(cfg.num_critics, device=self.device)[:2]
-            v_next = q_t[pair].mean(0) - self.alpha * logp_next
+            v_next = q_t[pair].min(0).values - self.alpha * logp_next
             not_done = (~d["term"]).float().unsqueeze(-1)
             y = d["r"].unsqueeze(-1) + cfg.gamma * not_done * v_next  # [B, K]
         q = n.critic(d["b"], d["a"])  # [M, B, K]
