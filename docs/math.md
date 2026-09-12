@@ -146,12 +146,10 @@ equation (15). Only `terminated` zeroes the bootstrap, because a truncated episo
 defines $\tilde{Q}_{\bar\phi}$.
 
 The target is also clamped to $[0,1]$. The reward of equation (3) is one terminal unit, so every true value lies in that
-range, which makes the clip exact knowledge of the task and not a heuristic. Without it the minimum of two noisy heads in
-equation (19) biases each target low by about $0.56$ times the head spread, because the mean of the minimum of two
-independent draws sits $\sigma/\sqrt{\pi}$ below their own mean, and the bootstrap compounds that constant offset to
-$0.56\,\sigma/(1-\gamma)$; at the spread of 0.005 the training run showed, this predicts $-0.28$, against the $Q$ near $-0.3$
-the run reached. The clip does not move the fixed point when the heads agree, because the minimum then equals the value and
-every true value already lies inside the range.
+range, which makes the clip exact knowledge of the task and not a heuristic. The clip is also what bounds overestimation, now
+that equation (19) averages two heads rather than taking their minimum: a target can never exceed the largest value the task
+can pay, so the loop in which the actor chases an overestimate and the overestimate returns as a target cannot run away. It
+does not move the fixed point, because every true value already lies inside the range.
 
 The bootstrap action is the policy mean $\mu^{\tanh}_\theta(b') = \tanh(\mu_\theta(b'))$, not a sample; this document writes
 $\mu_\theta(b)$ for that same mean action wherever a deterministic action is meant. Two facts force the change. The
@@ -178,8 +176,8 @@ for $|u| > 10$.
 
 $$\mathcal{L}_\pi(\theta) = \underbrace{\mathbb{E}_{b,\xi}\left[\alpha \log \pi_\theta\big(a_\theta(b,\xi) \mid b\big) - \frac{1}{M}\sum_{m=1}^{M} Q_{\phi,m}\big(b, a_\theta(b,\xi)\big)\right]}_{\text{SAC}} \ +\ \underbrace{\lambda_{\text{bc}}\,\mathbb{E}_{\mathcal{D}_{\text{off}}}\Big[\big\|\mu^{\tanh}_\theta(b) - a_{\text{data}}\big\|_2^2\Big]}_{\text{behavior cloning}}, \qquad \mu^{\tanh}_\theta(b) = \tanh\big(\mu_\theta(b)\big), \qquad \lambda_{\text{bc}} = 1.0 \tag{15}$$
 
-Design section 6.4 fixes the first term to the mean over all $M$ heads and not a minimum, because the actor should climb the
-ensemble's best estimate while the pessimism stays in the target of equation (12), where a bootstrap can compound.
+Design section 6.4 fixes the first term to the mean over all $M$ heads, so the actor climbs the ensemble's best estimate. The
+target of equation (12) averages a random pair instead, which cuts the variance a single head would carry into the bootstrap.
 
 The second term is behavior cloning on the offline half of every batch, against the scripted action $a_{\text{data}}$ recorded
 in that row. It exists because under the sparse reward the critic stays flat in the action: after 8,000 updates the value at
@@ -188,8 +186,8 @@ $a$ and the actor stayed near zero velocity. The term hands the actor the script
 the value that the search of section 9 needs.
 
 This is a deliberate deviation from RLPD, in the style of TD3+BC. It acts on the actor alone, and it never enters the critic
-target of equation (12), the critic loss of equation (13), or the world model loss of equation (22), so the pessimism of
-equation (19) and the QWM claim of section 5 are both untouched.
+target of equation (12), the critic loss of equation (13), or the world model loss of equation (22), so the value the critic
+learns and the QWM claim of section 5 are both untouched.
 
 $$\mathcal{L}_\alpha = \mathbb{E}_{b, a \sim \pi_\theta}\big[-\alpha\big(\log \pi_\theta(a \mid b) + \bar{\mathcal{H}}\big)\big], \qquad \bar{\mathcal{H}} = -3 \tag{16}$$
 
@@ -199,8 +197,9 @@ action dimension, and starts $\alpha$ at 0.1.
 
 ## 4. RLPD
 
-RLPD is Ball et al. (2023). It makes three changes to SAC and adds a second buffer. Equation (15) adds a fourth change that
-RLPD itself does not have.
+RLPD is Ball et al. (2023). It makes three changes to SAC and adds a second buffer. This project keeps the first two whole
+and changes the third: the ensemble stays for variance reduction and for the uncertainty signal of equation (28), while the
+clip of equation (12) replaces the pessimistic reduction. Equation (15) adds a fourth change that RLPD itself does not have.
 
 $$\mathcal{D} = \tfrac12 \mathcal{D}_{\text{off}} + \tfrac12 \mathcal{D}_{\text{on}}, \qquad \mathbb{E}_{\mathcal{D}}[f] = \tfrac12 \mathbb{E}_{\mathcal{D}_{\text{off}}}[f] + \tfrac12 \mathbb{E}_{\mathcal{D}_{\text{on}}}[f] \tag{17}$$
 
@@ -216,15 +215,21 @@ positively homogeneous, so a far out of distribution input produces a far out of
 target through equation (12), and the critic diverges. The bound is exact, and the claim that it stops divergence at a high
 update ratio is the empirical result of the RLPD paper.
 
-$$\tilde{Q}_{\bar\phi}(b',a') = \min_{m \in \{m_1, m_2\}} Q_{\bar\phi,m}(b',a'), \qquad m_1, m_2 \sim \mathrm{Uniform}\{1,\dots,M\},\ \ m_1 \ne m_2 \tag{19}$$
+$$\tilde{Q}_{\bar\phi}(b',a') = \tfrac{1}{2}\Big(Q_{\bar\phi,m_1}(b',a') + Q_{\bar\phi,m_2}(b',a')\Big), \qquad (m_1, m_2) \ \text{a random pair from } \{1,\dots,M\},\ m_1 \ne m_2, \ \text{drawn once per update} \tag{19}$$
 
-Design section 6.4 fixes $M = 10$ heads with batched weights, draws two head indices uniformly without replacement, and takes
-their minimum, exactly as in the RLPD paper. The minimum of two draws is a biased low estimate, and that bias is the pessimism
-that counters the overestimation equation (12) would otherwise compound, because the actor chases whatever the critic
-overestimates and the overestimate returns as a target. Ten heads make the amount of pessimism tunable, since a pair drawn
-from a large ensemble is milder than the minimum over all of it, and equation (15) keeps the actor on the mean over all heads
-so the policy climbs the best estimate and not the pessimistic one. The clip in equation (12) bounds the pessimism, so the
-downward bias corrects one target and does not accumulate across updates.
+Design section 6.4 fixes $M = 10$ heads with batched weights, so one forward pass evaluates all of them, and the target
+averages a random pair drawn once per update. RLPD takes the minimum of that pair, and this project does not, for a measured
+reason. Near the goal the heads disagree by 0.02 to 0.03, the minimum sits about $0.56$ of that spread below their mean on
+every bootstrap, because the mean of the minimum of two independent draws lies $\sigma/\sqrt{\pi}$ below their own mean, and
+the bootstrap compounds that per step offset to $0.56\,\sigma/(1-\gamma)$, which is 1.13 to 1.69 at that spread. That exceeds
+the whole value range of the task, so the value collapses, and over the 90 step horizon it reached zero in two runs: the
+measured values along successful demonstrations were 0.59 at the terminal step, then 0.44, 0.33, and 0.27 at one, two, and
+three steps before it, and 0.015 at twenty steps, against a $\gamma = 0.99$ that alone would cost 1 percent per step. RLPD's
+minimum works in its setting because its runs are long enough for the heads to converge and the spread to close.
+
+The ensemble stays, and only the reduction changes. Averaging two heads still cuts target variance, and the spread still
+supplies the uncertainty signal $\nu_i$ of equation (28) that the leader election needs. What the design drops is the
+pessimistic reduction, and the clip of equation (12) does that work instead, because every true value lies in $[0,1]$.
 
 $$\text{rows sampled per collected row} = \frac{G \cdot B}{E} = \frac{4 \times 256}{256} = 4 \tag{20}$$
 
