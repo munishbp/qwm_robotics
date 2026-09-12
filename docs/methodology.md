@@ -37,8 +37,9 @@ grippers latch and pull weakly, the scout only senses. Reward is 1 on success an
 The episode ends on success or after 150 steps of 0.1 s.
 
 Each robot observes its own position, its type, the goal, and the payload pose if the payload
-center is within its sensing range (2 m for pushers and grippers, 15 m for the scout). Robots
-exchange messages within 4 m unless the payload blocks the line between them.
+center is within its sensing range (3 m for pushers and grippers, 15 m for the scout). Robots
+exchange messages within 6 m unless the payload blocks the line between them. Goals lie 1.5 to
+3 m from the start pose with an orientation change of up to 45 degrees.
 
 ## 4. Pipeline
 

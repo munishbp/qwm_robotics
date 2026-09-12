@@ -59,11 +59,11 @@ class EnvConfig:
     drag_ang: float = 2.0
     pos_tol: float = 0.3
     ang_tol: float = 0.2
-    comm_range: float = 4.0
-    sense_range: tuple[float, float, float] = (2.0, 2.0, 15.0)
-    goal_dist_min: float = 2.5
-    goal_dist_max: float = 4.0
-    goal_angle_max: float = math.pi / 2
+    comm_range: float = 6.0
+    sense_range: tuple[float, float, float] = (3.0, 3.0, 15.0)
+    goal_dist_min: float = 1.5
+    goal_dist_max: float = 3.0
+    goal_angle_max: float = math.pi / 4
     start_clear: float = 1.0
     spawn_margin: float = 1.0
 

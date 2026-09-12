@@ -38,9 +38,10 @@ The team has `K` robots. Types: `0 pusher`, `1 gripper`, `2 scout`. The default 
   leave the arena by up to one diameter. Non penetration wins because contact, force, and occlusion
   depend on it.
 - Time step `dt = 0.1` s. Episode length `T = 150` steps.
-- Goal: a pose `(gx, gy, gtheta)`. Reset samples the payload pose and a goal at distance 2.5 to
-  4.0 m. The goal orientation differs from the start orientation by a random angle in
-  `[-pi/2, pi/2]`. Robots start at random positions at least
+- Goal: a pose `(gx, gy, gtheta)`. Reset samples the payload pose and a goal at distance 1.5 to
+  3.0 m. The goal orientation differs from the start orientation by a random angle in
+  `[-pi/4, pi/4]`. (The first draft used 2.5 to 4.0 m and `[-pi/2, pi/2]`. The cloned policy
+  plateaued at 6 percent success there, which leaves no room to measure a search effect.) Robots start at random positions at least
   1.0 m from the payload.
 
 ### 3.2 Actions
@@ -97,15 +98,17 @@ it. The env exposes `terminated` and `truncated` separately.
 | 14 | latched flag |
 | 15 | time fraction `t / T` |
 
-The payload is visible if its center is within the sensing range of the type. Ranges: pusher `2.0`,
-gripper `2.0`, scout `15.0` m, which exceeds the arena diagonal, so the scout always sees it.
+The payload is visible if its center is within the sensing range of the type. Ranges: pusher `3.0`,
+gripper `3.0`, scout `15.0` m, which exceeds the arena diagonal, so the scout always sees it.
 
 `full[e, k]` is the centralized observation for the oracle baseline: `local[e, k]` followed by the
 absolute payload pose `(px / A, py / A, cos, sin)` and every robot's `(x / A, y / A, latched)` in index
 order. Length `16 + 4 + 3K`.
 
 `comm[e, i, j]` is true when robot `i` can receive a message from robot `j`. It requires `i != j`,
-distance under `R_c = 4.0` m, and no occlusion. The payload occludes when the segment from `i` to `j`
+distance under `R_c = 6.0` m, and no occlusion. (The first draft used 2.0 m sensing and 4.0 m
+communication. Robots that start outside both ranges have no way to find the payload, and the
+task was too hard for the budget.) The payload occludes when the segment from `i` to `j`
 intersects the payload rectangle.
 
 ### 3.6 API
