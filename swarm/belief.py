@@ -23,6 +23,8 @@ class BeliefConfig:
     dropout: float = 0.0
     # Ablation: every teammate estimate is masked out of the fusion, so the belief is self only.
     mask_messages: bool = False
+    # Ablation: the stale message is used as received, with no forward correction.
+    roll_messages: bool = True
 
 
 class MessageTable:
@@ -135,8 +137,9 @@ def table_context(nets: Nets, types: torch.Tensor, actions: torch.Tensor) -> tor
 
 @torch.no_grad()
 def estimates(
-    nets: Nets, buf: Buffer, env: torch.Tensor, row: torch.Tensor, use_next: bool
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    nets: Nets, buf: Buffer, env: torch.Tensor, row: torch.Tensor, use_next: bool,
+    roll_messages: bool = True,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Rolled forward teammate estimates from a buffer row.
 
     Returns the table of estimates `[..., K, K, L]` with the diagonal left as the sender's
@@ -160,13 +163,14 @@ def estimates(
     ctx = table_context(nets, buf.types, action)
     feat_self = feat.clone()
     feat_self[..., 0] = 0.0
-    z = roll(nets, z, action, ctx, age, feat_self)
+    if roll_messages:
+        z = roll(nets, z, action, ctx, age, feat_self)
     return z, feat, action, unc
 
 
 def beliefs(
     nets: Nets, buf: Buffer, env: torch.Tensor, row: torch.Tensor, use_next: bool,
-    mask_messages: bool = False,
+    mask_messages: bool = False, roll_messages: bool = True,
 ) -> dict[str, torch.Tensor]:
     """Fused beliefs for every robot at a buffer row (or the row after it).
 
@@ -176,7 +180,7 @@ def beliefs(
     k = buf.K
     own_stack = buf.next_stack(env, row) if use_next else buf.stack(env, row)
     e = nets.enc(own_stack, buf.types.view(*([1] * env.dim()), k).expand(*env.shape, k))
-    z, feat, _, unc = estimates(nets, buf, env, row, use_next)
+    z, feat, _, unc = estimates(nets, buf, env, row, use_next, roll_messages)
     eye = torch.eye(k, dtype=torch.bool, device=e.device).view(*([1] * env.dim()), k, k, 1)
     table = torch.where(eye, e.unsqueeze(-2).expand_as(z), z)
     # Each receiver i fuses row i of the table. fuse_table treats every slot as own, so the

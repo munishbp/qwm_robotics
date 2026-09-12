@@ -29,7 +29,11 @@ class SearchConfig:
     candidates: int = 8
     beam: int = 4
     beta: float = 0.5
-    mode: str = "independent"  # independent, leader, round_robin
+    mode: str = "independent"  # independent, leader, leader_fresh, round_robin
+    # Controls. "q" is the critic. "decoded" scores a belief by the decoded payload pose against
+    # the goal, a hand built value that proves the search machinery without the critic. "random"
+    # replaces every score by noise, so the search picks a random candidate.
+    scorer: str = "q"
 
 
 def _roll_joint(nets: Nets, z: torch.Tensor, joint: torch.Tensor, types: torch.Tensor) -> torch.Tensor:
@@ -43,8 +47,22 @@ def _roll_joint(nets: Nets, z: torch.Tensor, joint: torch.Tensor, types: torch.T
     return nets.wm(z, joint, ctx)
 
 
-def _q(nets: Nets, b: torch.Tensor, a: torch.Tensor) -> torch.Tensor:
-    return nets.critic(b, a).mean(0)
+def _q(nets: Nets, b: torch.Tensor, a: torch.Tensor, cfg: SearchConfig | None = None,
+       goal: torch.Tensor | None = None) -> torch.Tensor:
+    """Node score. The critic by default; see SearchConfig.scorer for the controls."""
+    if cfg is None or cfg.scorer == "q":
+        return nets.critic(b, a).mean(0)
+    if cfg.scorer == "random":
+        return torch.rand(b.shape[:-1], device=b.device)
+    if cfg.scorer == "decoded":
+        # dec_b(b) is (dx / A, dy / A, cos, sin, latched, visible) of the payload relative to the
+        # robot. goal is (gx / A, gy / A, cos, sin) relative to the robot at the root. The score is
+        # the negative pose error, in arena units plus a fraction of the angle error.
+        d = nets.dec_b(b)
+        pos = (d[..., :2] - goal[..., :2]).norm(dim=-1)
+        ang = (d[..., 2:4] - goal[..., 2:4]).norm(dim=-1)
+        return -(pos + 0.25 * ang)
+    raise ValueError(f"unknown scorer {cfg.scorer}")
 
 
 def _candidates(nets: Nets, b: torch.Tensor, own: torch.Tensor, n: int, joint_candidates: bool) -> torch.Tensor:
@@ -73,7 +91,7 @@ CHUNK = 512
 @torch.no_grad()
 def search_rows(
     nets: Nets, z: torch.Tensor, feat: torch.Tensor, own: torch.Tensor, types: torch.Tensor,
-    cfg: SearchConfig, joint_candidates: bool,
+    cfg: SearchConfig, joint_candidates: bool, goal: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """`_search_rows` over chunks of rows, which bounds peak memory.
 
@@ -81,7 +99,8 @@ def search_rows(
     """
     k = z.shape[1]
     chunk = max(32, int(CHUNK * (6 / k) ** 2))
-    outs = [_search_rows(nets, z[i:i + chunk], feat[i:i + chunk], own[i:i + chunk], types, cfg, joint_candidates)
+    outs = [_search_rows(nets, z[i:i + chunk], feat[i:i + chunk], own[i:i + chunk], types, cfg, joint_candidates,
+                         None if goal is None else goal[i:i + chunk])
             for i in range(0, z.shape[0], chunk)]
     return torch.cat([o[0] for o in outs]), torch.cat([o[1] for o in outs])
 
@@ -89,7 +108,7 @@ def search_rows(
 @torch.no_grad()
 def _search_rows(
     nets: Nets, z: torch.Tensor, feat: torch.Tensor, own: torch.Tensor, types: torch.Tensor,
-    cfg: SearchConfig, joint_candidates: bool,
+    cfg: SearchConfig, joint_candidates: bool, goal: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Run the search for R independent rows.
 
@@ -107,7 +126,8 @@ def _search_rows(
     b = fuse_table(nets, z, feat)  # [R, K, L]
     joint = _candidates(nets, b, own, n, joint_candidates)  # [R, P, K, A]
     P = joint.shape[1]
-    score = _q(nets, b[rows, own].unsqueeze(1).expand(R, P, L), joint[rows, :, own])  # [R, P]
+    g = None if goal is None else goal.unsqueeze(1).expand(R, P, goal.shape[-1])
+    score = _q(nets, b[rows, own].unsqueeze(1).expand(R, P, L), joint[rows, :, own], cfg, g)  # [R, P]
     root_joint = joint
     root_idx = torch.arange(P, device=z.device).unsqueeze(0).expand(R, P)
     zp = z.unsqueeze(1).expand(R, P, K, L)
@@ -117,7 +137,8 @@ def _search_rows(
         zp = _roll_joint(nets, zp, joint, types)
         bp = fuse_table(nets, zp, featp)  # [R, P, K, L]
         mean_joint = nets.actor.mean(bp)
-        score = score + cfg.beta**d * _q(nets, bp[rows, :, own], mean_joint[rows, :, own])
+        gp = None if goal is None else goal.unsqueeze(1).expand(R, P, goal.shape[-1])
+        score = score + cfg.beta**d * _q(nets, bp[rows, :, own], mean_joint[rows, :, own], cfg, gp)
         keep = score.topk(min(cfg.beam, P), dim=1).indices  # [R, J]
         gather = lambda t: t.gather(1, keep.view(R, -1, *([1] * (t.dim() - 2))).expand(R, keep.shape[1], *t.shape[2:]))
         score, root_idx, zp, featp, bp = map(gather, (score, root_idx, zp, featp, bp))
@@ -141,7 +162,7 @@ def _search_rows(
 @torch.no_grad()
 def search(
     nets: Nets, table: torch.Tensor, feat: torch.Tensor, types: torch.Tensor, unc_table: torch.Tensor,
-    cfg: SearchConfig, step: int,
+    cfg: SearchConfig, step: int, goal: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, dict[str, float]]:
     """Actions `[E, K, A]` for the team from each robot's table `[E, K, K, L]`, plus statistics.
 
@@ -159,12 +180,19 @@ def search(
         z = table.reshape(E * K, K, L)
         f = feat.reshape(E * K, K, feat.shape[-1])
         own = torch.arange(K, device=dev).repeat(E)
-        joint, _ = search_rows(nets, z, f, own, types, cfg, joint_candidates=False)
+        g = None if goal is None else goal.reshape(E * K, -1)
+        joint, _ = search_rows(nets, z, f, own, types, cfg, joint_candidates=False, goal=g)
         rows = torch.arange(E * K, device=dev)
         return joint[rows, own].reshape(E, K, ACT_DIM), stats
     envs = torch.arange(E, device=dev)
     if cfg.mode == "round_robin":
         elected = torch.full((E, K), step % K, dtype=torch.long, device=dev)
+    elif cfg.mode == "leader_fresh":
+        # Control: one election per env from fresh uncertainty, every robot follows it, no
+        # fallback. This removes the disagreement confound of the leader mode.
+        fresh = unc_table.diagonal(dim1=-2, dim2=-1).argmin(-1)
+        elected = fresh.unsqueeze(1).expand(E, K)
+        stats["leader_disagreement"] = 0.0
     elif cfg.mode == "leader":
         elected = unc_table.argmin(-1)  # [E, K(i)] the leader that robot i elects
         fresh = unc_table.diagonal(dim1=-2, dim2=-1).argmin(-1)  # [E] election under fresh values
@@ -180,7 +208,8 @@ def search(
     actions = nets.actor.mean(b_all.diagonal(dim1=1, dim2=2).transpose(1, 2))  # [E, K, A]
     if e_idx.numel() == 0:
         return actions, stats
-    joint, _ = search_rows(nets, table[e_idx, i_idx], feat[e_idx, i_idx], i_idx, types, cfg, joint_candidates=True)
+    g = None if goal is None else goal[e_idx, i_idx]
+    joint, _ = search_rows(nets, table[e_idx, i_idx], feat[e_idx, i_idx], i_idx, types, cfg, joint_candidates=True, goal=g)
     broadcast = torch.zeros(E, K, K, ACT_DIM, device=dev)  # [e, leader, slot]
     broadcast[e_idx, i_idx] = joint
     leader_ok = self_elected[envs.unsqueeze(1), elected]  # [E, K] did my elected leader search

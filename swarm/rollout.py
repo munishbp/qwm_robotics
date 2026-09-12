@@ -47,7 +47,7 @@ class Runner:
             if self.obs_mode == "full":
                 out = beliefs_full(self.nets, self.buf, self.env_idx, row, False)
             else:
-                out = beliefs(self.nets, self.buf, self.env_idx, row, False, self.cfg.mask_messages)
+                out = beliefs(self.nets, self.buf, self.env_idx, row, False, self.cfg.mask_messages, self.cfg.roll_messages)
             b = out["b"]
             unc = self.nets.critic(b, self.nets.actor.mean(b)).std(0)
             if policy == "sample":
@@ -60,7 +60,8 @@ class Runner:
                 # Robot i knows its own uncertainty fresh and every teammate's as of the message.
                 unc_table = out["unc_table"].clone()
                 unc_table.diagonal(dim1=-2, dim2=-1).copy_(unc)
-                a, stats = search(self.nets, out["table"], out["feat"], self.buf.types, unc_table, search_cfg, t)
+                goal = self.obs["local"][..., 5:9]  # goal relative to the robot, for the decoded scorer
+                a, stats = search(self.nets, out["table"], out["feat"], self.buf.types, unc_table, search_cfg, t, goal)
                 for k, v in stats.items():
                     self.search_stats.setdefault(k, []).append(v)
             else:
