@@ -97,19 +97,68 @@ cannot, and the search inherits that.
 
 TABLE_H2
 
-H2_TEXT
+**Verdict by the decision rule: confirmed.** The best depth per lag is 4, 2, 0, 0 for lags 0, 1,
+2, 4. It is non increasing and it drops from lag 0 to lag 4.
+
+**What the grid actually shows.** Every search cell is below the no search cell of its row, so
+the "best depth" is the least harmful depth. The substantive measurement is the cost of one step
+of imagining teammates from stale information, depth 1 minus depth 0, which needs no assumption
+that search helps:
+
+| Lag | 0 | 1 | 2 | 4 |
+|---|---|---|---|---|
+| Depth 1 minus depth 0 (points) | +2.1 | 0.0 | −4.2 | −13.3 |
+
+Fresh teammate information makes the first imagined step neutral or mildly useful. Four frame old
+information makes it cost thirteen points. That is the mechanism H2 proposed, measured directly:
+imagined teammate error grows with staleness and it dominates model error, which does not change
+across the rows. Deeper levels then partly recover (at lag 4: 38.3, 40.1, 43.0 for depths 1, 2,
+4), because the beam keeps re ranking with the critic at every level and the first imagined step
+is the one that misplaces the teammates most.
+
+**The staleness effect on the baseline is the other finding in this table.** No search success
+rises with lag: 38.8, 50.3, 63.8, 61.7. The snapshot was trained at lag 1. Lag 0 is off
+distribution for the fusion (an age zero teammate entry never occurs in training except at an
+episode start), which explains the drop below lag 1. The rise above lag 1 says the fusion does
+better with older teammate estimates, which section 9 examines with messages masked.
+
+Cost: the no search step costs 25 ms for 128 envs, depth 2 costs 68 ms, depth 6 costs 218 ms.
 
 ## 7. H3: tree search discount against staleness
 
 TABLE_H3
 
-H3_TEXT
+**Verdict by the decision rule: confirmed.** The best tree search discount per lag is 1.0, 0.7,
+0.3, 0.0 for lags 0, 1, 2, 4, which is non increasing. At lag 0 the full weight on imagined
+value is best (36.5 against 31.0 at beta 0, 2 SE about 4.8). At lag 4 discarding imagined value
+entirely is best (48.7 against 41.1 at beta 0.5, 2 SE about 9.4). Lags 1 and 2 are flat within
+noise. The beta 0 column reproduces the depth 0 column of H2 within noise at every lag (31.0
+against 31.5, 42.2 against 42.7, 51.0 against 52.3, 48.7 against 51.6), which is the consistency
+check math.md section 11.3 requires.
+
+The same caveat as H2 applies: the whole sweep sits below no search, so beta tunes the size of the
+harm. The direction is still the one H3 predicted. Imagined value is worth more when teammate
+information is fresh and worth nothing when it is four frames old.
 
 ## 8. H4: leader election at matched compute
 
 TABLE_H4
 
-H4_TEXT
+**Verdict by the decision rule: confirmed at lag 4 and marginal at lag 1.** Leader elected search
+scores 50.0 against 44.0 for independent search at lag 1 (gap 6.0, 2 SE 8.0) and 50.3 against
+41.7 at lag 4 (gap 8.6, 2 SE 7.5).
+
+**The mechanism is not the one H4 proposed.** In leader mode only 56 percent of robots follow a
+leader. Every robot elects the lowest uncertainty entry of its own table, half of the robots
+disagree with the election under fresh uncertainty, and a robot whose elected leader did not elect
+itself falls back to its mean action. So leader mode is a mixture of about half joint search and
+half plain policy, and the plain policy is the strongest policy on this snapshot (50.3 at lag 1).
+Leader mode lands exactly on the no search number. The clean test of a broadcast joint search is
+round robin, where every robot follows one leader's search every step, and it is the worst cell in
+the whole study: 27.3 at lag 1 and 18.2 at lag 4. One robot's stale estimates of five teammates,
+searched jointly and imposed on all of them, is worse than each robot searching alone.
+
+Compute is matched as designed: 68 ms per step in every mode.
 
 ## 9. Robustness and transfer
 
@@ -117,7 +166,14 @@ TABLE_ROBUST
 
 TABLE_TRANSFER
 
-ROBUST_TEXT
+**Message dropout helps the no search baseline** (50.3, 55.7, 59.4, 63.5 at dropout 0, 0.1,
+0.25, 0.5) and leaves search flat around 44 to 47. This is the staleness effect of H2 seen from
+the other side: a dropped message leaves an older entry in the table, and the fusion does better
+with older entries.
+
+TRANSFER_TEXT
+
+ABLATION_TEXT
 
 ## 10. Figures and the interactive replay
 
