@@ -63,6 +63,7 @@ def main() -> None:
     os.makedirs("checkpoints", exist_ok=True)
     log = open(log_path, "w")
     ep_success, ep_count = 0, 0
+    best = -1.0
     t0 = time.time()
     metrics: dict[str, float] = {}
     for step in range(args.steps):
@@ -75,7 +76,7 @@ def main() -> None:
                 metrics = agent.update(offline, online)
         if (step + 1) % args.eval_every == 0 or step + 1 == args.steps:
             ev = evaluate(agent, lambda s: make_env(args.eval_envs, s, False, device=dev),
-                          belief_cfg, "mean", None, batches=1)
+                          belief_cfg, "mean", None, batches=2)
             row = {"step": step + 1, "transitions": (step + 1) * env.num_envs,
                    "train_success": ep_success / max(ep_count, 1), "eval_success": ev["success"],
                    "eval_length": ev["length_on_success"], "wall_min": (time.time() - t0) / 60, **metrics}
@@ -84,6 +85,12 @@ def main() -> None:
             log.flush()
             print(json.dumps({k: (round(v, 4) if isinstance(v, float) else v) for k, v in row.items()}))
             agent.save(f"checkpoints/{args.out}.pt", {"step": step + 1, "args": vars(args)})
+            # The snapshot every sweep uses is the best checkpoint by evaluation success. The
+            # critic has shown a late decline in every run, so the last checkpoint is not the
+            # best one. Ties go to the later checkpoint.
+            if ev["success"] >= best:
+                best = ev["success"]
+                agent.save(f"checkpoints/{args.out}_best.pt", {"step": step + 1, "args": vars(args), "eval_success": best})
     log.close()
     write_json(f"results/train_{args.out}_final.json", {"args": vars(args), "last": row})
 

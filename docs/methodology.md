@@ -50,7 +50,7 @@ takes about 90 minutes on the hardware above.
 |---|---|---|---|
 | 1 | `scripts/run_controls.py` | `results/controls.json` | Task solvable by the scripted team, unsolvable by one robot, throughput |
 | 2 | `scripts/collect_offline.py --envs 256 --steps 800` | `data/offline.pt` | 204,800 scripted transitions with action noise 0.2 |
-| 3 | `scripts/train.py --obs belief --steps 12000` | `checkpoints/belief.pt`, `results/train_belief.jsonl` | The decentralized belief agent. This is the snapshot every sweep uses |
+| 3 | `scripts/train.py --obs belief --steps 12000` | `checkpoints/belief_best.pt`, `results/train_belief.jsonl` | The decentralized belief agent. The best checkpoint by evaluation success is the snapshot every sweep uses |
 | 4 | `scripts/train.py --obs full --steps 12000` | `checkpoints/full.pt`, `results/train_full.jsonl` | Centralized full state baseline |
 | 5 | `scripts/world_model_error.py` | `results/wm_error.json` | Open loop latent and decoded error against horizon |
 | 6 | `scripts/evaluate.py --depth -1, 0, 2 --lag 1` | `results/h1_depth*.json` | H1 |
@@ -79,8 +79,10 @@ gradient on the latents. There is no separate pretraining phase because the enco
 at the start, and training on the offline half of every batch is the same data the proposal
 pretrains on.
 
-Evaluation during training runs 128 envs with the mean action every 500 steps and records the
-first episode of every env.
+Evaluation during training runs 2 batches of 128 envs with the mean action every 500 steps and
+records the first episode of every env. The checkpoint with the best evaluation success is the
+snapshot for every test time experiment (`checkpoints/belief_best.pt`). The critic showed a late
+decline in every training run, so the final checkpoint is not used.
 
 ## 6. Evaluation protocol
 
