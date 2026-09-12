@@ -197,7 +197,9 @@ teammates, so team size can change at test time.
 - Target: minimum of two random heads, as in RLPD. Actor objective uses the mean over all heads.
 - Discount `gamma = 0.99`. Adam with learning rate `3e-4` for every module. Fusion has 4 heads.
 - Uncertainty `unc_i = std_m Q_m(b_i, mu(b_i))`, the critic ensemble spread at the mean action.
-- Entropy temperature `alpha` is learned with target entropy `-3`.
+- Entropy temperature `alpha` is learned with target entropy `-3`, starting at `0.1`.
+- The critic target does not back up the entropy term (RLPD `backup_entropy = False`). Under a
+  sparse terminal reward the entropy stream would reward a long episode and the actor would stall.
 
 ### 6.5 World model: `swarm/world_model.py`
 

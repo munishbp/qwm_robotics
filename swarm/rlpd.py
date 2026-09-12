@@ -7,6 +7,7 @@ loss, and the decoder loss. The RL losses shape the encoders. The world model ch
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, asdict
 
 import torch
@@ -26,6 +27,10 @@ class RLPDConfig:
     num_critics: int = 10
     target_entropy: float = -float(ACT_DIM)
     utd: int = 4
+    # Under a sparse terminal reward the entropy stream rewards a long episode, so a critic that
+    # backs up the entropy term learns to stall. RLPD's backup_entropy=False leaves it out.
+    backup_entropy: bool = False
+    init_alpha: float = 0.1
     obs_mode: str = "belief"  # belief or full
     full_dim: int = 0
 
@@ -37,6 +42,8 @@ class Agent:
         self.types = types.to(device)
         enc_in = STACK * cfg.full_dim + ACT_DIM if cfg.obs_mode == "full" else ENC_IN
         self.nets = Nets(cfg.num_critics, enc_in).to(device)
+        with torch.no_grad():
+            self.nets.log_alpha.fill_(math.log(cfg.init_alpha))
         self.belief_fn = beliefs_full if cfg.obs_mode == "full" else beliefs
         n = self.nets
         self.opt_critic = torch.optim.Adam(
@@ -77,7 +84,9 @@ class Agent:
             a_next, logp_next = n.actor.sample(d["b_next"])
             q_t = n.critic_target(d["b_next"], a_next)
             pair = torch.randperm(cfg.num_critics, device=self.device)[:2]
-            v_next = q_t[pair].min(0).values - self.alpha * logp_next
+            v_next = q_t[pair].min(0).values
+            if cfg.backup_entropy:
+                v_next = v_next - self.alpha * logp_next
             not_done = (~d["term"]).float().unsqueeze(-1)
             y = d["r"].unsqueeze(-1) + cfg.gamma * not_done * v_next  # [B, K]
         q = n.critic(d["b"], d["a"])  # [M, B, K]

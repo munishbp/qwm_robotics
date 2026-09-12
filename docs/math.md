@@ -133,11 +133,16 @@ $$J(\pi) = \mathbb{E}_\pi\Big[\textstyle\sum_t \gamma^t\big(r_t + \alpha\,\mathc
 The entropy term pays the policy to stay random. Under a sparse reward the policy gets no gradient from the reward until it
 succeeds once, so without this term it collapses early and never finds the goal.
 
-$$\mathcal{T}^\pi Q(b,a) = r + \gamma\,\mathbb{E}_{b', a' \sim \pi}\big[Q(b',a') - \alpha \log \pi(a' \mid b')\big], \qquad y = r + \gamma(1 - \text{terminated})\big[\tilde{Q}_{\bar\phi}(b',a') - \alpha \log \pi_\theta(a' \mid b')\big] \tag{12}$$
+$$\mathcal{T}^\pi Q(b,a) = r + \gamma\,\mathbb{E}_{b', a' \sim \pi}\big[Q(b',a') - \alpha \log \pi(a' \mid b')\big], \qquad y = r + \gamma(1 - \text{terminated})\,\tilde{Q}_{\bar\phi}(b',a') \tag{12}$$
 
-The soft backup is the ordinary Bellman operator plus the entropy of the next action, and the bonus must enter the target or
-the critic learns the value of a policy the actor is not running. Only `terminated` zeroes the bootstrap, because a truncated
-episode still has a future, and equation (19) defines $\tilde{Q}_{\bar\phi}$.
+The left side is the soft Bellman operator of SAC. The right side is the target this project uses, and it leaves the
+entropy term out. This is RLPD's `backup_entropy = False` setting, and it exists for a sparse terminal reward: the reward is
+at most 1 once per episode, while the entropy stream pays about $\alpha \mathcal{H} / (1 - \gamma)$ per episode, so a
+critic that backs up the entropy learns that ending the episode is a loss and the actor learns to stall. The first training
+run of this project showed exactly that: $Q$ near 20 and lower on the transitions closest to success. With the entropy out
+of the backup the critic estimates the discounted success probability, and the entropy still acts on the actor through
+equation (15). Only `terminated` zeroes the bootstrap, because a truncated episode still has a future, and equation (19)
+defines $\tilde{Q}_{\bar\phi}$.
 
 $$\mathcal{L}_Q(\phi) = \frac{1}{M}\sum_{m=1}^{M}\mathbb{E}_{\mathcal{D}}\Big[\big(Q_{\phi,m}(b,a) - y\big)^2\Big] \tag{13}$$
 
