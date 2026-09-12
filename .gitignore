@@ -21,3 +21,5 @@ data/
 .vscode/
 .idea/
 .DS_Store
+figures/*.tmp
+results/*.tmp
