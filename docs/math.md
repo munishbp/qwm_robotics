@@ -134,7 +134,7 @@ $$J(\pi) = \mathbb{E}_\pi\Big[\textstyle\sum_t \gamma^t\big(r_t + \alpha\,\mathc
 The entropy term pays the policy to stay random. Under a sparse reward the policy gets no gradient from the reward until it
 succeeds once, so without this term it collapses early and never finds the goal.
 
-$$\mathcal{T}^\pi Q(b,a) = r + \gamma\,\mathbb{E}_{b', a' \sim \pi}\big[Q(b',a') - \alpha \log \pi(a' \mid b')\big], \qquad y = \mathrm{clip}\Big(r + \gamma\,(1 - \text{terminated})\,\tilde{Q}_{\bar\phi}\big(b',\ \mu^{\tanh}_\theta(b')\big),\ 0,\ 1\Big) \tag{12}$$
+$$\mathcal{T}^\pi Q(b,a) = r + \gamma\,\mathbb{E}_{b', a' \sim \pi}\big[Q(b',a') - \alpha \log \pi(a' \mid b')\big], \qquad y = \mathrm{clip}\Big(r + \gamma\,(1 - \text{terminated})\,\tilde{Q}_{\bar\phi}(b',\ a'),\ 0,\ 1\Big), \qquad a' = \begin{cases} a_{t+1} & \text{the next row of the same episode exists} \\ \mu^{\tanh}_\theta(b') & \text{otherwise}\end{cases} \tag{12}$$
 
 The left side is the soft Bellman operator of SAC. The right side is the target this project uses, and it leaves the
 entropy term out. This is RLPD's `backup_entropy = False` setting, and it exists for a sparse terminal reward: the reward is
@@ -151,15 +151,24 @@ that equation (19) averages two heads rather than taking their minimum: a target
 can pay, so the loop in which the actor chases an overestimate and the overestimate returns as a target cannot run away. It
 does not move the fixed point, because every true value already lies inside the range.
 
-The bootstrap action is the policy mean $\mu^{\tanh}_\theta(b') = \tanh(\mu_\theta(b'))$, not a sample; this document writes
-$\mu_\theta(b)$ for that same mean action wherever a deterministic action is meant. Two facts force the change. The
-temperature decays to about zero within 3,000 updates, because the target entropy $-3$ sits far below the entropy the cloned
-policy of equation (15) already has, and a critic that is flat in the action gives $\sigma_\theta$ no gradient, so the
-standard deviation stays near 0.3 and the sampled policy fails most episodes. A sampled bootstrap then values that noisy
-policy: the measured value decayed by about 0.8 per step away from the goal, reading 0.65 at the terminal step and 0.52, 0.42,
-0.34 at one, two, and three steps before it, and 0.03 at twenty steps, where $\gamma = 0.99$ alone would give 0.99 per step.
-The search of section 9 and the evaluation both act with the mean policy, so the critic now values the policy that acts. This
-makes the target TD3 like, with a deterministic next action, while the actor loss of equation (15) keeps the SAC form.
+The bootstrap action is the action the buffer recorded next, $a_{t+1}$ from the same episode, which makes the target SARSA
+style on the behavior data. The fallback $\mu^{\tanh}_\theta(b') = \tanh(\mu_\theta(b'))$ covers only the two rows where no
+successor exists: the newest row of the online buffer, and the last row of a truncated episode. This document writes
+$\mu_\theta(b)$ for that same mean action wherever a deterministic action is meant.
+
+Two earlier choices failed, and they explain this one. A sampled bootstrap valued the noisy collection policy, whose standard
+deviation stays near 0.3 because the temperature decays to about zero within 3,000 updates and a critic flat in the action
+gives $\sigma_\theta$ no gradient, and the value decayed by about 0.8 per step away from the goal. A bootstrap on the policy
+mean then held for 4,000 updates at $G = 4$ and collapsed, because the policy mean sits about 0.45 away from the data action
+in Euclidean distance over the 3 dimensional action, which is the cloning floor of equation (15) under partial observability,
+so once the critic learned any action dependence that mean became a query off the data: at step 5,000 the terminal row fit
+0.47 against a target of 1, and the target critic at the next belief and the policy mean returned 0.29 one step from success.
+
+This is the standard out of distribution action problem of offline reinforcement learning, and a SARSA style target is the
+standard cure when the behavior data is good. The critic now estimates the value of taking $a$ in $b$ and then following the
+behavior policy of the two buffers, and that policy succeeds 99 percent of the time in the offline half, so the value it
+estimates is a useful one. The search of section 9 reads that value to rank candidate actions, and the actor of equation (15)
+is still improved by it, because policy improvement over a behavior policy is what the first term of equation (15) performs.
 
 $$\mathcal{L}_Q(\phi) = \frac{1}{M}\sum_{m=1}^{M}\mathbb{E}_{\mathcal{D}}\Big[\big(Q_{\phi,m}(b,a) - y\big)^2\Big] \tag{13}$$
 
