@@ -31,6 +31,7 @@ class Runner:
         self.ep_start = torch.full((self.E,), buffer.t, dtype=torch.long, device=self.device)
         self.obs = env.reset()
         self.env_idx = torch.arange(self.E, device=self.device)
+        self.search_stats: dict[str, list[float]] = {}
 
     @torch.no_grad()
     def step(self, policy: str, scripted=None, search_cfg: SearchConfig | None = None) -> dict:
@@ -56,7 +57,12 @@ class Runner:
             elif policy == "search":
                 if self.obs_mode == "full":
                     raise ValueError("search needs beliefs, not the full observation")
-                a = search(self.nets, out["table"], out["feat"], self.buf.types, unc, search_cfg, t)
+                # Robot i knows its own uncertainty fresh and every teammate's as of the message.
+                unc_table = out["unc_table"].clone()
+                unc_table.diagonal(dim1=-2, dim2=-1).copy_(unc)
+                a, stats = search(self.nets, out["table"], out["feat"], self.buf.types, unc_table, search_cfg, t)
+                for k, v in stats.items():
+                    self.search_stats.setdefault(k, []).append(v)
             else:
                 raise ValueError(f"unknown policy {policy}")
         target = self.env.state()["decoder_target"]

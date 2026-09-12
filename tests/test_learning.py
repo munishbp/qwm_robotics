@@ -103,7 +103,8 @@ def test_search_shapes_and_bounds():
     unc = torch.rand(4, K, device=DEV)
     for mode in ["independent", "leader", "round_robin"]:
         for depth in [0, 1, 3]:
-            a = search(nets, table, feat, TYPES.to(DEV), unc, SearchConfig(depth=depth, mode=mode), 2)
+            unc_table = torch.rand(4, K, K, device=DEV)
+            a, stats = search(nets, table, feat, TYPES.to(DEV), unc_table, SearchConfig(depth=depth, mode=mode), 2)
             assert a.shape == (4, K, 3)
             assert (a.abs() <= 1).all()
 
@@ -113,8 +114,43 @@ def test_search_depth_zero_picks_best_root_by_critic():
     nets = Nets().to(DEV)
     table = torch.randn(3, K, K, LATENT, device=DEV)
     feat = torch.rand(3, K, K, FEAT_DIM, device=DEV)
-    unc = torch.rand(3, K, device=DEV)
-    a = search(nets, table, feat, TYPES.to(DEV), unc, SearchConfig(depth=0, candidates=0), 0)
+    unc_table = torch.rand(3, K, K, device=DEV)
+    a, _ = search(nets, table, feat, TYPES.to(DEV), unc_table, SearchConfig(depth=0, candidates=0), 0)
     # With no sampled candidates the only root candidate is the mean action.
     b = fuse_table(nets, table[:, 0], feat[:, 0])
     assert torch.allclose(a[:, 0], nets.actor.mean(b)[:, 0], atol=1e-5)
+
+
+def test_search_scores_the_best_root_by_the_critic_at_depth_zero():
+    torch.manual_seed(0)
+    nets = Nets().to(DEV)
+    from swarm.search import search_rows
+    z = torch.randn(3, K, LATENT, device=DEV)
+    feat = torch.rand(3, K, FEAT_DIM, device=DEV)
+    own = torch.tensor([0, 2, 5], device=DEV)
+    joint, score = search_rows(nets, z, feat, own, TYPES.to(DEV), SearchConfig(depth=0, candidates=16), False)
+    b = fuse_table(nets, z, feat)
+    rows = torch.arange(3, device=DEV)
+    q = nets.critic(b[rows, own], joint[rows, own]).mean(0)
+    assert torch.allclose(q, score, atol=1e-4)
+    # The chosen action must score at least as well as the mean action.
+    q_mean = nets.critic(b[rows, own], nets.actor.mean(b[rows, own])).mean(0)
+    assert (q >= q_mean - 1e-5).all()
+
+
+def test_leader_mode_follows_self_elected_leaders_only():
+    torch.manual_seed(0)
+    nets = Nets().to(DEV)
+    table = torch.randn(2, K, K, LATENT, device=DEV)
+    feat = torch.rand(2, K, K, FEAT_DIM, device=DEV)
+    # Env 0: everyone elects robot 1. Env 1: everyone elects robot 3 except robot 3, who elects 0.
+    unc_table = torch.ones(2, K, K, device=DEV)
+    unc_table[0, :, 1] = 0.0
+    unc_table[1, :, 3] = 0.0
+    unc_table[1, 3, 3] = 0.5
+    unc_table[1, 3, 0] = 0.0
+    a, stats = search(nets, table, feat, TYPES.to(DEV), unc_table, SearchConfig(depth=1, mode="leader"), 0)
+    assert a.shape == (2, K, 3)
+    assert stats["searches_per_env"] == 0.5
+    assert stats["robots_following_a_leader"] == 0.5
+    assert stats["leader_disagreement"] > 0

@@ -18,7 +18,7 @@ ACT_DIM = 3
 NUM_TYPES = 3
 LOCAL_DIM = 16
 ENC_IN = STACK * LOCAL_DIM + ACT_DIM
-FEAT_DIM = 2 + NUM_TYPES  # age, uncertainty, type one hot
+FEAT_DIM = 1 + NUM_TYPES  # age, type one hot
 HIDDEN = 256
 LOG_STD_MIN = -5.0
 LOG_STD_MAX = 2.0
@@ -53,7 +53,7 @@ class Fusion(nn.Module):
     """Attention over the own encoding and the teammate estimates.
 
     The own encoding is the query. Keys and values are the own encoding and every estimate, each
-    concatenated with its feature vector (age, uncertainty, type). The result is permutation
+    concatenated with its feature vector (age, type). The result is permutation
     invariant over the estimates because attention weights depend on content only.
     """
 

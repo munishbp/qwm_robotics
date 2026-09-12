@@ -22,7 +22,7 @@ from swarm.search import SearchConfig  # noqa: E402
 
 DEPTHS = [-1, 0, 1, 2, 4, 6]
 LAGS = [0, 1, 2, 4]
-BETAS = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+BETAS = [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
 DROPOUTS = [0.0, 0.1, 0.25, 0.5]
 TEAMS = ["p2g1s1", "default", "p4g4s1", "p6g5s1", "p8g7s1"]
 

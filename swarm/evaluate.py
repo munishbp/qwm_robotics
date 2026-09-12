@@ -26,14 +26,15 @@ def run_batch(agent: Agent, env, belief_cfg: BeliefConfig, policy: str,
               search_cfg: SearchConfig | None, steps: int) -> dict[str, float]:
     E = env.num_envs
     dev = agent.device
-    hist = Buffer(E, HISTORY, agent.types, dev, agent.cfg.full_dim)
+    hist = Buffer(E, HISTORY, env.types, dev, agent.cfg.full_dim)
     runner = Runner(env, hist, belief_cfg, agent.nets, agent.cfg.obs_mode)
     done_first = torch.zeros(E, dtype=torch.bool, device=dev)
     success = torch.zeros(E, dtype=torch.bool, device=dev)
     length = torch.zeros(E, device=dev)
     pos_err = torch.zeros(E, device=dev)
     ang_err = torch.zeros(E, device=dev)
-    torch.cuda.synchronize()
+    if dev == "cuda":
+        torch.cuda.synchronize()
     t0 = time.time()
     for t in range(steps):
         out = runner.step(policy, search_cfg=search_cfg)
@@ -44,16 +45,20 @@ def run_batch(agent: Agent, env, belief_cfg: BeliefConfig, policy: str,
         pos_err = torch.where(first, out["info"]["final_pos_error"], pos_err)
         ang_err = torch.where(first, out["info"]["final_angle_error"], ang_err)
         done_first |= done
-    torch.cuda.synchronize()
+    if dev == "cuda":
+        torch.cuda.synchronize()
     wall = (time.time() - t0) / steps
     s = success.float()
+    stats = {k: sum(v) / len(v) for k, v in runner.search_stats.items()}
     return {
+        **stats,
         "success": s.mean().item(),
         "length_on_success": (length * s).sum().item() / max(s.sum().item(), 1),
         "pos_error": pos_err.mean().item(),
         "angle_error": ang_err.mean().item(),
         "ms_per_step": 1000 * wall,
         "finished": done_first.float().mean().item(),
+        "envs": E,
     }
 
 
@@ -72,5 +77,4 @@ def evaluate(agent: Agent, make_env, belief_cfg: BeliefConfig, policy: str = "me
         out[k] = mean
         out[k + "_se"] = math.sqrt(var / len(vals))
     out["batches"] = batches
-    out["envs_per_batch"] = rows[0].get("envs", 0) or make_env(seed).num_envs
     return out

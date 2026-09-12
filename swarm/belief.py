@@ -53,10 +53,15 @@ class MessageTable:
         return self.stamp.clone()
 
 
-def features(age: torch.Tensor, unc: torch.Tensor, types: torch.Tensor) -> torch.Tensor:
-    """Per estimate features `[..., FEAT_DIM]`: age fraction, uncertainty, type one hot."""
-    one_hot = F.one_hot(types.long(), NUM_TYPES).to(unc.dtype)
-    return torch.cat([(age.to(unc.dtype) / AGE_MAX).unsqueeze(-1), unc.unsqueeze(-1), one_hot], -1)
+def features(age: torch.Tensor, types: torch.Tensor) -> torch.Tensor:
+    """Per estimate features `[..., FEAT_DIM]`: age fraction and type one hot.
+
+    Uncertainty is not a fusion feature. The offline buffer has no critic, so a stored
+    uncertainty would mark the data source inside every batch. Uncertainty serves the leader
+    election only.
+    """
+    one_hot = F.one_hot(types.long(), NUM_TYPES).float()
+    return torch.cat([(age.float() / AGE_MAX).unsqueeze(-1), one_hot], -1)
 
 
 def fuse_table(nets: Nets, table: torch.Tensor, feat: torch.Tensor) -> torch.Tensor:
@@ -131,7 +136,9 @@ def estimates(
 
     Returns the table of estimates `[..., K, K, L]` with the diagonal left as the sender's
     stamped encoding (the caller replaces it with the fresh own encoding), the features
-    `[..., K, K, F]`, and the recorded actions `[..., K, K, A]`.
+    `[..., K, K, F]`, the recorded actions `[..., K, K, A]`, and the stored uncertainties
+    `[..., K, K]`. An entry stamped at the current row is not written yet when the robots act,
+    so its action and uncertainty are zero. Its age is zero, so the action is never used.
     """
     k = buf.K
     slot = buf._slot(row)
@@ -141,12 +148,15 @@ def estimates(
     sender_types = buf.types.view(*([1] * env.dim()), 1, k).expand(*stamp.shape)
     z = nets.enc(tab["obs"], sender_types)
     age = (row_now.view(*row.shape, 1, 1) - stamp).clamp(min=0, max=AGE_MAX)
-    feat = features(age, tab["unc"], sender_types)
-    ctx = table_context(nets, buf.types, tab["action"])
+    current = (age == 0).unsqueeze(-1)
+    action = torch.where(current, torch.zeros_like(tab["action"]), tab["action"])
+    unc = torch.where(current.squeeze(-1), torch.zeros_like(tab["unc"]), tab["unc"])
+    feat = features(age, sender_types)
+    ctx = table_context(nets, buf.types, action)
     feat_self = feat.clone()
     feat_self[..., 0] = 0.0
-    z = roll(nets, z, tab["action"], ctx, age, feat_self)
-    return z, feat, tab["action"]
+    z = roll(nets, z, action, ctx, age, feat_self)
+    return z, feat, action, unc
 
 
 def beliefs(
@@ -160,14 +170,14 @@ def beliefs(
     k = buf.K
     own_stack = buf.next_stack(env, row) if use_next else buf.stack(env, row)
     e = nets.enc(own_stack, buf.types.view(*([1] * env.dim()), k).expand(*env.shape, k))
-    z, feat, _ = estimates(nets, buf, env, row, use_next)
+    z, feat, _, unc = estimates(nets, buf, env, row, use_next)
     eye = torch.eye(k, dtype=torch.bool, device=e.device).view(*([1] * env.dim()), k, k, 1)
     table = torch.where(eye, e.unsqueeze(-2).expand_as(z), z)
     # Each receiver i fuses row i of the table. fuse_table treats every slot as own, so the
     # diagonal of its output is the belief of receiver i built from its own row.
     fused = fuse_table(nets, table, feat)  # [..., K(i), K(slot), L]
     b = fused.diagonal(dim1=-3, dim2=-2).transpose(-1, -2)
-    return {"b": b, "e": e, "table": table, "feat": feat}
+    return {"b": b, "e": e, "table": table, "feat": feat, "unc_table": unc}
 
 
 def beliefs_full(
