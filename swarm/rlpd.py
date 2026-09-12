@@ -96,20 +96,24 @@ class Agent:
             y = d["r"].unsqueeze(-1) + cfg.gamma * not_done * v_next  # [B, K]
         q = n.critic(d["b"], d["a"])  # [M, B, K]
         critic_loss = F.mse_loss(q, y.unsqueeze(0).expand_as(q))
+        # The cloning term flows into the encoders and the fusion as well as the actor. It is a
+        # supervised signal, so it is safe there, and it is what teaches the fusion to read the
+        # payload position out of a teammate's message when the own sensor cannot see it.
+        bc_loss = torch.zeros((), device=self.device)
+        if offline is not None and cfg.bc_weight > 0:
+            mu = n.actor.mean(d["b"][n_online:])
+            bc_loss = F.mse_loss(mu, d["a"][n_online:])
         self.opt_critic.zero_grad(set_to_none=True)
-        critic_loss.backward()
+        self.opt_actor.zero_grad(set_to_none=True)
+        (critic_loss + cfg.bc_weight * bc_loss).backward()
         self.opt_critic.step()
+        self.opt_actor.step()
 
-        # Actor on detached beliefs, so the encoder follows the critic only.
+        # SAC actor term on detached beliefs, so the RL objective shapes the actor only.
         b = d["b"].detach()
         a_new, logp = n.actor.sample(b)
         q_new = n.critic(b, a_new).mean(0)
         actor_loss = (self.alpha.detach() * logp - q_new).mean()
-        bc_loss = torch.zeros((), device=self.device)
-        if offline is not None and cfg.bc_weight > 0:
-            mu = n.actor.mean(b[n_online:])
-            bc_loss = F.mse_loss(mu, d["a"][n_online:])
-            actor_loss = actor_loss + cfg.bc_weight * bc_loss
         self.opt_actor.zero_grad(set_to_none=True)
         actor_loss.backward()
         self.opt_actor.step()

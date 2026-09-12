@@ -224,7 +224,10 @@ One update:
 4. Actor loss and temperature loss, plus a behavior cloning term on the offline half of the batch,
    `bc_weight = 1.0` times the squared error between the policy mean and the recorded action. This
    is a deviation from RLPD. Under the sparse reward the critic stays flat in the action for far
-   longer than the budget allows, and without the term the actor stayed near zero velocity.
+   longer than the budget allows, and without the term the actor stayed near zero velocity. The
+   cloning gradient also flows into the encoders and the fusion. It is a supervised signal, and
+   it is what teaches the fusion to read the payload position out of a teammate's message when
+   the own sensor cannot see it. The SAC actor term runs on a detached belief.
 5. World model loss and decoder loss with stop gradient on the latents.
 6. Polyak update of the target critic with `tau = 0.005`.
 
