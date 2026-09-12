@@ -37,11 +37,12 @@ def main() -> None:
     p.add_argument("--lag", type=int, default=1)
     p.add_argument("--dropout", type=float, default=0.0)
     p.add_argument("--policy", choices=["mean", "sample"], default="mean", help="no search policy")
+    p.add_argument("--no-messages", action="store_true", help="ablation: self only beliefs")
     p.add_argument("--out", default="")
     args = p.parse_args()
     dev = setup(args.seed)
     agent = Agent.load(args.ckpt, dev)
-    belief_cfg = BeliefConfig(lag=args.lag, dropout=args.dropout)
+    belief_cfg = BeliefConfig(lag=args.lag, dropout=args.dropout, mask_messages=args.no_messages)
     if args.depth >= 0:
         policy, scfg = "search", SearchConfig(args.depth, args.candidates, args.beam, args.beta, args.mode)
     else:

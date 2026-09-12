@@ -47,7 +47,7 @@ class Runner:
             if self.obs_mode == "full":
                 out = beliefs_full(self.nets, self.buf, self.env_idx, row, False)
             else:
-                out = beliefs(self.nets, self.buf, self.env_idx, row, False)
+                out = beliefs(self.nets, self.buf, self.env_idx, row, False, self.cfg.mask_messages)
             b = out["b"]
             unc = self.nets.critic(b, self.nets.actor.mean(b)).std(0)
             if policy == "sample":

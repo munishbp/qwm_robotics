@@ -121,6 +121,12 @@ def h2(d: dict) -> None:
     # Note the noise level: the spread of the best cell against its neighbors.
     verdict = "confirmed" if mono and drop else ("refuted" if seq[0] is not None and seq[-1] is not None and seq[-1] > seq[0] else "not resolved")
     print(f"\nBest depth per lag: {dict(zip(lags, seq))}. H2 verdict: **{verdict}** (non increasing: {mono}, drop from lag {lags[0]} to {lags[-1]}: {drop}).\n")
+    gaps = {lag: cell[(lag, 1)]["success"] - cell[(lag, 0)]["success"] for lag in lags if (lag, 1) in cell and (lag, 0) in cell}
+    print("Cost of one step of imagination (depth 1 minus depth 0, points): "
+          + ", ".join(f"lag {l}: {100 * g:+.1f}" for l, g in gaps.items()) + ".\n")
+    below = {lag: cell[(lag, best_by_lag[lag][0])]["success"] - cell[(lag, -1)]["success"] for lag in lags if (lag, -1) in cell and best_by_lag[lag][0] is not None}
+    print("Best search cell minus no search (points): "
+          + ", ".join(f"lag {l}: {100 * g:+.1f}" for l, g in below.items()) + ".\n")
     print("Cost: ms per step by depth at lag 1: " + ", ".join(f"D={c}: {cell[(1, c)]['ms_per_step']:.0f}" for c in depths if (1, c) in cell) + ".\n")
 
 

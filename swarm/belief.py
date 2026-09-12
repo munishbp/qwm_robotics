@@ -21,6 +21,8 @@ from swarm.nets import FEAT_DIM, NUM_TYPES, Nets
 class BeliefConfig:
     lag: int = 1
     dropout: float = 0.0
+    # Ablation: every teammate estimate is masked out of the fusion, so the belief is self only.
+    mask_messages: bool = False
 
 
 class MessageTable:
@@ -64,17 +66,20 @@ def features(age: torch.Tensor, types: torch.Tensor) -> torch.Tensor:
     return torch.cat([(age.float() / AGE_MAX).unsqueeze(-1), one_hot], -1)
 
 
-def fuse_table(nets: Nets, table: torch.Tensor, feat: torch.Tensor) -> torch.Tensor:
+def fuse_table(nets: Nets, table: torch.Tensor, feat: torch.Tensor, mask_messages: bool = False) -> torch.Tensor:
     """Fuse every slot of a table as if it were the own encoding.
 
     table `[..., K, L]`, feat `[..., K, F]` -> beliefs `[..., K, L]`. Slot k is the query and the
-    other K - 1 slots are its estimates. The own feature keeps age zero.
+    other K - 1 slots are its estimates. The own feature keeps age zero. With `mask_messages`
+    every estimate is masked and the belief is self only.
     """
     k = table.shape[-2]
     eye = torch.eye(k, dtype=torch.bool, device=table.device)
     est = table.unsqueeze(-3).expand(*table.shape[:-2], k, k, table.shape[-1])
     est_feat = feat.unsqueeze(-3).expand(*feat.shape[:-2], k, k, feat.shape[-1])
     mask = (~eye).expand(*table.shape[:-2], k, k)
+    if mask_messages:
+        mask = torch.zeros_like(mask)
     own_feat = feat.clone()
     own_feat[..., 0] = 0.0
     return nets.fuse(table, own_feat, est, est_feat, mask)
@@ -160,7 +165,8 @@ def estimates(
 
 
 def beliefs(
-    nets: Nets, buf: Buffer, env: torch.Tensor, row: torch.Tensor, use_next: bool
+    nets: Nets, buf: Buffer, env: torch.Tensor, row: torch.Tensor, use_next: bool,
+    mask_messages: bool = False,
 ) -> dict[str, torch.Tensor]:
     """Fused beliefs for every robot at a buffer row (or the row after it).
 
@@ -175,7 +181,7 @@ def beliefs(
     table = torch.where(eye, e.unsqueeze(-2).expand_as(z), z)
     # Each receiver i fuses row i of the table. fuse_table treats every slot as own, so the
     # diagonal of its output is the belief of receiver i built from its own row.
-    fused = fuse_table(nets, table, feat)  # [..., K(i), K(slot), L]
+    fused = fuse_table(nets, table, feat, mask_messages)  # [..., K(i), K(slot), L]
     b = fused.diagonal(dim1=-3, dim2=-2).transpose(-1, -2)
     return {"b": b, "e": e, "table": table, "feat": feat, "unc_table": unc}
 
