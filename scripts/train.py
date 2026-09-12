@@ -48,10 +48,12 @@ def main() -> None:
     dev = setup(args.seed)
     env = make_env(args.envs, args.seed, training=True, device=dev)
     types = env.types
-    fd = full_dim(env.num_robots)
+    # The full observation is stored only for the centralized run. The ring holds at most 4096
+    # rows per env, about one million transitions at 256 envs, as the design states.
+    fd = full_dim(env.num_robots) if args.obs == "full" else 0
     cfg = RLPDConfig(utd=args.utd, obs_mode=args.obs, full_dim=fd)
     agent = Agent(types, cfg, dev)
-    online = Buffer(env.num_envs, args.steps + 1, types, dev, fd)
+    online = Buffer(env.num_envs, min(args.steps + 1, 4096), types, dev, fd)
     offline = None if args.no_offline else Buffer.load(args.offline, dev)
     belief_cfg = BeliefConfig(lag=args.lag)
     runner = Runner(env, online, belief_cfg, agent.nets, args.obs)
