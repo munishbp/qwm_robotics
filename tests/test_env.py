@@ -162,7 +162,7 @@ def test_one_pusher_cannot_move_the_payload():
 def test_payload_occludes_the_comm_mask():
     """Robot 0 and robot 1 sit on opposite faces, so the payload blocks the link."""
     env = _place(
-        (TYPE_PUSHER,) * 4, (0.0, 0.0, 0.0), [[0.0, 1.0], [0.0, -1.0], [0.0, 1.5], [4.5, 1.0]]
+        (TYPE_PUSHER,) * 4, (0.0, 0.0, 0.0), [[0.0, 1.0], [0.0, -1.0], [0.0, 1.5], [-4.5, -4.0]]
     )
     obs, _, _, _, _ = env.step(torch.zeros(1, 4, 3))
     comm = obs["comm"][0]
