@@ -10,7 +10,8 @@ uv.lock.bak
 wandb/
 checkpoints/
 outputs/
-runs/
+runs/*/data/
+runs/*/checkpoints/
 data/
 *.pt
 *.pth

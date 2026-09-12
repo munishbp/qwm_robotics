@@ -7,21 +7,27 @@ referenced as (n) are in `math.md`.
 
 ## 1. Summary
 
-The pipeline stands up end to end: a heterogeneous team of three pushers, two grippers, and one
-scout learns to move a payload to a goal pose under sparse reward and partial observability, from
-decentralized beliefs built over stale teammate messages, and a latent world model learned on the
-same data beats a copy baseline at every horizon. On that snapshot, test time tree search does not
-help. It hurts by nine points, and the harm is traceable to one mechanism: the critic is nearly
-flat across the policy's own samples, so ranking candidates by Q amplifies noise and selects the
-most extreme candidate. Everything downstream of that (the depth by staleness grid, the discount
-sweep, the leader election) is measured on a mechanism that is already below its baseline.
+The study ran twice: once on the batched 2D simulator, once on mjlab (MuJoCo Warp) with real
+contact physics and the same interface, learner, and protocol (sections 2 to 12 cover the 2D run,
+section 13 the mjlab run). The two runs disagree on the headline, and the disagreement is the
+main finding.
 
-| Hypothesis | Verdict | Where |
+| Hypothesis | 2D simulator | mjlab |
 |---|---|---|
-| H1: search improves the decentralized baseline | Refuted. Depth 2 search scores 43.2 against 52.3 for the mean action (2 SE = 4.6 points). | Section 5 |
-| H2: best depth shrinks with staleness | See section 6 | Section 6 |
-| H3: best tree search discount shrinks with staleness | See section 7 | Section 7 |
-| H4: leader elected search beats independent search at matched compute | See section 8 | Section 8 |
+| H1: search improves the decentralized baseline | Refuted. Depth 2: 43.2 against 52.3 for the mean action | Confirmed. Depth 2: 69.5 against 45.1 (+24.5 points, 2 SE 5.3) |
+| H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Rule met (6, 6, 6, 4); the gain of search shrinks from +35 at lag 0 to +24 at lag 4 |
+| H3: best discount shrinks with staleness | Rule met (1.0, 0.7, 0.3, 0.0), all below no search | Rule met (0.9, 0.9, 0.9, 0.7); imagined value adds 9 to 11 points at lags 0 to 2 |
+| H4: elected leader beats independent search at matched compute | Rule met, but by a fallback to the plain policy | Refuted. Independent 69.0 against leader 41.1 and round robin 43.8 |
+
+On the 2D task the critic is nearly flat across the policy's own candidates (values span 0.003),
+so ranking candidates by Q amplifies noise and search loses nine points. On mjlab, where actions
+move a real box through contact, the critic ranks actions: the argmax alone adds 16 points and the
+world model rollout adds another 8. In both simulators the staleness directions of H2 and H3 hold,
+the belief pipeline is essential (messages masked: 13.5 and 27 percent), and a broadcast joint
+search from one leader is worse than every robot searching for itself. The one caveat that applies
+to mjlab is that the sampled policy (the mean policy plus its exploration noise) already reaches
+65 to 67 percent, so most of the search gain over the mean action is the gain of not acting
+deterministically, and the search's own margin over a random sample is 4 to 7 points.
 
 ## 2. What was built and what changed on the way
 
@@ -316,42 +322,252 @@ H1 is doubly disadvantaged: it removes the noise and it selects the most extreme
 | `figures/search_cost.png` | Milliseconds per decision step against depth |
 | `figures/viewer.html` (published at https://claude.ai/code/artifact/b4442525-6e3f-4a68-8b0b-cf80dc7e8982) | three.js replay of recorded episodes: payload, goal, robots by type, latch lines, and message links colored by staleness, with a side by side mode to compare settings from the same start |
 
+## 13. The same study on mjlab (MuJoCo Warp)
+
+`swarm/env_mjlab.py` runs the task with real contact physics through mjlab (see `mjlab_port.md`
+for the mapping and its measurements). Everything else is identical: the interface, the learner,
+the scripts, the protocol, and the seeds. The belief run trained for 24,000 steps (6.1 million
+transitions, 66 minutes) because 12,000 steps left it at 29 percent and still rising. The tables
+are in `results_tables_mjlab.md` and the data in `runs/mjlab/results/`. The figures are in
+`runs/mjlab/figures/`.
+
+### 13.1 Controls and training
+
+### Controls (256 envs)
+
+| Control | Success (%) | Length on success | Position error (m) | Angle error (rad) |
+|---|---|---|---|---|
+| scripted_full_team | 83.6 | 78.9 | 0.330 | 0.140 |
+| single_pusher | 0.0 | - | 2.211 | 0.399 |
+| single_gripper | 0.0 | - | 2.227 | 0.404 |
+
+Throughput: 9,064 env steps per second at 256 envs.
+
+### Training
+
+| Run | Transitions | Final eval success | Best eval success | Wall minutes |
+|---|---|---|---|---|
+| belief | 6,144,000 | 27.7 | 48.4 | 66 |
+| belief_12k | 3,072,000 | 20.7 | 28.9 | 33 |
+| full | 6,144,000 | 25.0 | 25.0 | 28 |
+
+
+The scripted controller reaches 83.6 percent on the real physics (99.6 on 2D). The belief agent's
+best evaluation is 48.4 percent over two batches of 128 envs during training, and 45.1 percent in
+the three batch protocol. The full state baseline reaches 25.0 percent at the same step count,
+below the belief agent, as it did on 2D at 12,000 steps.
+
+### 13.2 World model
+
+### World model open loop error
+
+| Horizon | Latent MSE | Copy latent MSE | Decoded position error (m) | Copy position error (m) | Decoded angle error (rad) |
+|---|---|---|---|---|---|
+| 1 | 0.0065 | 0.0102 | 0.209 | 0.218 | 0.088 |
+| 2 | 0.0156 | 0.0277 | 0.254 | 0.279 | 0.131 |
+| 3 | 0.0264 | 0.0480 | 0.303 | 0.345 | 0.177 |
+| 4 | 0.0387 | 0.0722 | 0.356 | 0.419 | 0.227 |
+| 6 | 0.0677 | 0.1178 | 0.479 | 0.569 | 0.327 |
+| 8 | 0.1028 | 0.1673 | 0.582 | 0.691 | 0.421 |
+
+
+The latent model beats the copy baseline at every horizon again, by a wider margin than on 2D.
+
+### 13.3 H1: search helps
+
+### H1: search against no search at lag 1 (256 envs, 3 batches)
+
+| Setting | Success (%) | Length on success | ms per step |
+|---|---|---|---|
+| no search (mean action) | 45.1 ± 1.9 | 77.9 | 30.8 |
+| depth 0 (critic argmax) | 61.1 ± 1.4 | 92.8 | 33.0 |
+| depth 2 search | 69.5 ± 1.8 | 93.4 | 66.6 |
+
+H1 verdict: depth 2 minus no search = +24.5 points, 2 SE = 5.3 points, **confirmed**.
+
+
+**Verdict: confirmed.** The critic argmax over nine candidates adds 16 points and the two step
+rollout adds 8 more. The mechanism that failed on 2D works here. The difference is in the critic:
+on mjlab the critic's values across the candidates differ enough to rank them, because in contact
+physics the action taken at a state changes whether the payload moves at all, and the critic sees
+that in the data.
+
+**Caveat.** The sampled policy scores 65.4 percent at lag 1 (section 13.7), within noise of the
+depth 2 search (67 to 70 across the sweeps). The mean action of this policy stalls in contact
+configurations that any perturbation breaks. So the fair decomposition of the 24.5 point gain is:
+about 20 points for acting with any stochastic action, and 4 to 7 points for choosing that action
+by search, which reaches 2 SE only at the deeper settings (depth 6 at lag 0: 72.7 ± 4.3 against
+65.4 ± 2.2).
+
+### 13.4 H2: depth against staleness
+
+### H2: success (%) by staleness (rows) and depth (columns), beta 0.5
+
+| Lag | no search | D=0 | D=1 | D=2 | D=4 | D=6 | best depth |
+|---|---|---|---|---|---|---|---|
+| 0 | 37.2 ± 2.7 | 60.7 ± 2.2 | 69.0 ± 2.5 | 70.8 ± 1.3 | 69.3 ± 1.3 | 72.7 ± 4.3 | 6 |
+| 1 | 44.0 ± 1.6 | 62.2 ± 1.1 | 68.0 ± 1.6 | 70.3 ± 2.3 | 68.2 ± 4.4 | 71.4 ± 2.5 | 6 |
+| 2 | 45.6 ± 0.7 | 56.5 ± 2.3 | 62.5 ± 1.4 | 62.8 ± 3.0 | 70.6 ± 2.1 | 71.6 ± 2.9 | 6 |
+| 4 | 38.8 ± 3.4 | 53.1 ± 0.5 | 58.3 ± 2.5 | 59.6 ± 1.6 | 63.0 ± 1.6 | 60.9 ± 4.3 | 4 |
+
+Best depth per lag: {0: 6, 1: 6, 2: 6, 4: 4}. H2 verdict: **confirmed** (non increasing: True, drop from lag 0 to 4: True).
+
+Cost of one step of imagination (depth 1 minus depth 0, points): lag 0: +8.3, lag 1: +5.7, lag 2: +6.0, lag 4: +5.2.
+
+Best search cell minus no search (points): lag 0: +35.4, lag 1: +27.3, lag 2: +26.0, lag 4: +24.2.
+
+Cost: ms per step by depth at lag 1: D=-1: 28, D=0: 32, D=1: 34, D=2: 46, D=4: 75, D=6: 104.
+
+
+**Verdict: rule met, and this time above the baseline.** The best depth is 6 at lags 0 to 2 and 4
+at lag 4. The cleaner measurement is the gain of the best search cell over no search: +35.4,
++27.3, +26.0, +24.2 points at lags 0, 1, 2, 4. Stale teammate information costs the search about
+11 points between lag 0 and lag 4, while the no search baseline is flat across lags (section
+13.7). The cost of one imagined step is positive at every lag (+8.3, +5.7, +6.0, +5.2 for depth 1
+minus depth 0), and it shrinks with staleness, which is the direction H2 predicted.
+
+### 13.5 H3: discount against staleness
+
+### H3: success (%) by staleness (rows) and tree search discount beta (columns), depth 2
+
+| Lag | beta=0.0 | beta=0.1 | beta=0.3 | beta=0.5 | beta=0.7 | beta=0.9 | beta=1.0 | best beta |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 62.2 ± 2.0 | 65.1 ± 1.6 | 69.3 ± 3.4 | 65.9 ± 3.6 | 66.4 ± 2.1 | 72.9 ± 0.3 | 67.2 ± 2.3 | 0.9 |
+| 1 | 58.3 ± 1.4 | 62.8 ± 0.9 | 68.5 ± 2.1 | 67.2 ± 0.9 | 68.5 ± 2.8 | 69.0 ± 1.1 | 68.5 ± 1.8 | 0.9 |
+| 2 | 60.2 ± 2.7 | 62.8 ± 2.1 | 64.8 ± 2.1 | 67.7 ± 2.8 | 65.9 ± 4.1 | 69.0 ± 0.7 | 66.9 ± 2.1 | 0.9 |
+| 4 | 54.7 ± 2.1 | 59.1 ± 1.4 | 58.3 ± 0.3 | 62.0 ± 1.4 | 63.5 ± 0.3 | 58.9 ± 2.3 | 58.6 ± 2.0 | 0.7 |
+
+Best beta per lag: {0: 0.9, 1: 0.9, 2: 0.9, 4: 0.7}. H3 verdict: **confirmed** (non increasing: True).
+
+
+**Verdict: rule met, mildly.** Imagined value helps at every lag. At lags 0 to 2 the best discount
+is 0.9 and beta 0 to 0.9 adds 9 to 11 points. At lag 4 the best is 0.7 and the curve is flatter,
+which is the predicted direction, but the difference between 0.7 and 0.9 at lag 4 (63.5 against
+58.9) is inside 2 SE.
+
+### 13.6 H4: leader election
+
+### H4: leader election at matched compute, depth 2
+
+| Lag | Mode | Success (%) | ms per step | Searches per env | Robots following | Leader disagreement |
+|---|---|---|---|---|---|---|
+| 1 | independent | 69.0 ± 1.7 | 47 | 6.00 | 1.00 | 0.00 |
+| 1 | leader | 41.1 ± 0.3 | 46 | 0.96 | 0.69 | 0.34 |
+| 1 | round_robin | 43.8 ± 3.9 | 46 | 1.00 | 1.00 | 0.00 |
+| 4 | independent | 60.9 ± 1.6 | 47 | 6.00 | 1.00 | 0.00 |
+| 4 | leader | 32.8 ± 1.2 | 45 | 0.95 | 0.65 | 0.40 |
+| 4 | round_robin | 32.6 ± 0.9 | 46 | 1.00 | 1.00 | 0.00 |
+
+H4 verdict: **refuted (leader is worse)**.
+
+
+**Verdict: refuted.** Independent search wins by 25 to 28 points over both leader modes, and the
+leader modes are no better than no search. On mjlab the leader disagreement is again about half,
+but here even the round robin variant, where everyone follows one leader's joint search, is far
+below independent search. A joint action searched from one robot's stale estimates of its
+teammates is worse than six independent searches from fresh own sensing.
+
+### 13.7 Robustness, transfer, ablations
+
+### Robustness: message dropout at lag 1
+
+| dropout | no search (%) | depth 2 search (%) |
+|---|---|---|
+| 0.0 | 45.3 ± 1.2 | 67.2 ± 0.9 |
+| 0.1 | 50.3 ± 0.7 | 69.5 ± 3.9 |
+| 0.25 | 48.7 ± 4.2 | 69.3 ± 4.3 |
+| 0.5 | 44.5 ± 2.0 | 67.7 ± 1.7 |
+
+
+### Transfer: team composition at lag 1 (trained on the default team)
+
+| team | no search (%) | depth 2 search (%) |
+|---|---|---|
+| default | 47.4 ± 2.2 | 70.8 ± 2.6 |
+| p2g1s1 | 2.3 ± 0.5 | 1.3 ± 0.5 |
+| p4g4s1 | 28.6 ± 4.1 | 69.3 ± 2.3 |
+| p6g5s1 | 31.2 ± 0.5 | 53.6 ± 2.5 |
+| p8g7s1 | 25.8 ± 0.9 | 43.2 ± 0.9 |
+
+
+### Ablations on the snapshot (128 envs, 3 batches)
+
+| Setting | Success (%) | Length on success |
+|---|---|---|
+| no search, lag 0 | 39.3 ± 0.3 | 77.2 |
+| no search, lag 1 | 43.5 ± 2.6 | 74.9 |
+| no search, lag 2 | 42.4 ± 2.6 | 73.3 |
+| no search, lag 4 | 39.8 ± 1.8 | 67.0 |
+| no search, lag 6 | 41.7 ± 2.1 | 73.3 |
+| no search, lag 8 | 37.8 ± 0.3 | 69.5 |
+| messages masked, lag 1 | 27.3 ± 3.2 | 76.1 |
+| messages masked, lag 2 | 26.8 ± 1.0 | 74.3 |
+| messages masked, lag 4 | 27.1 ± 1.8 | 72.7 |
+| sampled policy, lag 1 | 65.4 ± 2.2 | 85.7 |
+| sampled policy, lag 2 | 67.4 ± 0.7 | 87.7 |
+
+
+Search keeps its lead at every dropout level. Transfer differs from 2D: the mean policy degrades
+on larger teams (29, 31, 26 percent at 9, 12, 16 robots) because more robots crowd the faces in
+real contact, and search recovers most of it (69, 54, 43). The 4 robot team is again unsolvable by
+construction. Messages help (27 percent masked against 44), the no search baseline is flat across
+staleness (the 2D rise with lag does not reproduce), and the sampled policy is the strong baseline
+discussed in 13.3.
+
+### 13.8 What the two simulators say together
+
+- The search mechanism of QWM transfers to a decentralized heterogeneous team when the critic can
+  rank actions. Whether it can depends on the task's physics, not on the search. The 2D task's
+  quasi static dynamics made the critic action flat; contact physics did not.
+- The staleness effects are real in both: the value of imagination falls with the age of teammate
+  information, whether imagination helps overall (mjlab) or not (2D).
+- Broadcast joint search loses to independent search in both simulators.
+- The right no search baseline for a stochastic policy is the sampled policy, which this protocol
+  did not use in its decision rules. The H1 gain against that baseline is smaller and reaches
+  significance only at depth 4 to 6.
+
 ## 11. Conclusions
 
-1. **Test time world model search does not help this decentralized team, and the reason is the
-   critic, not the model.** The critic's values across the policy's own candidates span 0.003, so
-   the argmax that both QWM and this search rest on amplifies noise and picks extreme actions.
-   Depth 0 (no model at all) already loses ten points, and rolling the model adds nothing on top.
-   The model itself is sound: it beats the copy baseline at every horizon. QWM's mechanism
-   requires a critic that ranks actions, and under sparse reward with a short budget this critic
-   ranks states, not actions. That is the boundary of the method this study maps.
+1. **Test time world model search helps a decentralized heterogeneous team when, and only when,
+   the critic can rank actions.** On mjlab it adds 24.5 points at lag 1 (45.1 to 69.5) and the
+   world model rollout accounts for 8 of them. On the 2D simulator the same code loses 9 points,
+   because that task's critic is flat across the policy's own candidates (values span 0.003) and
+   the argmax amplifies noise. The QWM mechanism transfers; its precondition is a critic with action
+   dependence, and quasi static physics under sparse reward did not produce one within the budget.
 
-2. **The staleness effects H2 and H3 predicted are real and measurable even below the baseline.**
-   One step of imagining teammates costs +2.1 points at lag 0 and −13.3 at lag 4, and the useful
-   weight on imagined value falls from 1.0 at lag 0 to 0.0 at lag 4. Imagined teammate error grows
-   with staleness while model error does not change, which is the claim of the proposal.
+2. **Stale teammate information degrades the search in the direction H2 and H3 predicted, in both
+   simulators.** On mjlab the gain of search falls from +35 points at lag 0 to +24 at lag 4 while
+   the baseline stays flat, and the value of one imagined step falls from +8.3 to +5.2 points. On
+   2D the cost of one imagined step goes from +2.1 to −13.3 points. The best discount falls with
+   staleness in both (1.0 to 0.0 on 2D, 0.9 to 0.7 on mjlab).
 
-3. **Leader election does not rescue a broadcast joint search.** Everyone following one leader's
-   search (round robin) is the worst setting in the study. The apparent win of elected leaders
-   comes from the half of the team that falls back to the plain policy.
+3. **A broadcast joint search from one elected leader is worse than independent search.** On mjlab
+   independent search beats both leader modes by 25 to 28 points, and the leader modes equal no
+   search. On 2D the apparent leader win came from robots falling back to the plain policy.
 
-4. **The belief pipeline is the part that works.** Messages raise success from 13.5 to 50 percent,
-   the forward correction keeps eight frame old messages useful, and the permutation invariant
-   fusion transfers zero shot to teams up to 16 robots at 96 percent success.
+4. **The belief pipeline works in both physics.** Messages raise success from 13.5 to 50 percent
+   on 2D and from 27 to 44 percent on mjlab, and the forward correction keeps eight frame old
+   messages usable. The permutation invariant fusion transfers zero shot to 16 robots at 96 percent
+   on 2D; on mjlab the mean policy degrades on larger teams and search recovers most of the loss.
 
-5. **Getting an off policy learner to train at all on this task took nine documented changes**,
-   each a way the RLPD and QWM recipe breaks under sparse reward and partial observability:
-   entropy backup, action flat critics, out of distribution bootstrap actions, ensemble
-   pessimism compounding over long horizons, and bootstrapped representation collapse. The final
-   recipe (SARSA target, target copies of the representation, two supervised anchors, checkpoint
-   selection) is recorded in `design.md` and `math.md`.
+5. **The sampled policy is the baseline a fair claim about search must beat.** On mjlab it reaches
+   65 to 67 percent on its own. Against it the search's margin is 4 to 7 points and reaches 2 SE
+   only at depth 4 to 6. Against the deterministic mean the margin is 24 points. Both numbers are
+   true and the protocol should have used the first.
+
+6. **Getting an off policy learner to train at all on this task took nine documented changes**,
+   each a way the RLPD and QWM recipe breaks under sparse reward and partial observability. The
+   final recipe (SARSA target, target copies of the representation, two supervised anchors,
+   checkpoint selection) is recorded in `design.md` and `math.md`, and it carried over to mjlab
+   without change.
 
 ## 12. Limitations
 
 - One training seed for the snapshot and one for each baseline. Cell to cell comparisons within a
   sweep are paired on the same snapshot and the same first episodes, so they are the reliable part.
-- The physics is a quasi static 2D model, not mjlab. The hypotheses concern the search mechanism
-  and the belief machinery, which transfer, but contact rich behavior does not.
+- The mjlab run is a single seed at 24,000 steps with a 45 percent baseline. Its transfer and
+  ablation cells use 128 envs. The mjlab physics simplifies latching (kinematic attachment and a
+  central unloading force) and gives a cylinder against a box at most one contact point.
 - The critic values the behavior data (SARSA target), not the learned policy. This was needed for
   stability and it is documented, but it means the critic's action ranking is that of a mixture of
   the scripted controller and the collection policy.
