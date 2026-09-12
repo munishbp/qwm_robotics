@@ -45,6 +45,11 @@ class RLPDConfig:
     # a sampled bootstrap values a noisy policy that fails, and that value decays by about 0.8
     # per step away from the goal. The search and the evaluation act with the mean policy.
     target_policy: str = "mean"  # mean or sample
+    # The target is the mean of two random heads, not the minimum. The heads disagree by 0.02 to
+    # 0.03 near the goal, the minimum sits 0.56 of that below the mean on every bootstrap, and
+    # over a 90 step horizon that compounds to a value of zero. The [0, 1] clamp bounds the
+    # overestimation the minimum was there to prevent.
+    target_reduce: str = "mean"  # mean or min
     obs_mode: str = "belief"  # belief or full
     full_dim: int = 0
 
@@ -94,14 +99,14 @@ class Agent:
         B, K = d["a"].shape[:2]
         n_online = parts[0]["a"].shape[0]
 
-        # Critic. Target uses the minimum of two random heads, as in RLPD, and the entropy bonus.
+        # Critic. Target uses two random heads and the mean action.
         with torch.no_grad():
             a_next, logp_next = n.actor.sample(d["b_next"])
             if cfg.target_policy == "mean":
                 a_next = n.actor.mean(d["b_next"])
             q_t = n.critic_target(d["b_next"], a_next)
             pair = torch.randperm(cfg.num_critics, device=self.device)[:2]
-            v_next = q_t[pair].min(0).values
+            v_next = q_t[pair].mean(0) if cfg.target_reduce == "mean" else q_t[pair].min(0).values
             if cfg.backup_entropy:
                 v_next = v_next - self.alpha * logp_next
             not_done = (~d["term"]).float().unsqueeze(-1)
