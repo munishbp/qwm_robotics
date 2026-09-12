@@ -256,7 +256,10 @@ class MjlabTransportEnv(TransportEnv):
             grip = vel_cmd * mj.grip_force * self.latched.unsqueeze(-1)  # [E, K, 2]
             arm = latch_world - center
             torque_z = (arm[..., 0] * grip[..., 1] - arm[..., 1] * grip[..., 0]).sum(1)
-            lift = mj.lift_force * self.latched.sum(1).to(torch.float32)
+            # The unloading force is bounded so the payload never leaves the floor: four latched
+            # grippers would otherwise lift 100 N against a 78.5 N weight.
+            weight = mj.payload_mass * 9.81
+            lift = (mj.lift_force * self.latched.sum(1).to(torch.float32)).clamp(max=0.8 * weight)
             wrench = torch.zeros(self.num_envs, 6, device=self.device)
             wrench[:, 0] = grip[..., 0].sum(1)
             wrench[:, 1] = grip[..., 1].sum(1)

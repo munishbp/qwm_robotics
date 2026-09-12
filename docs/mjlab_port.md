@@ -13,7 +13,7 @@ measurements of the port.
 | Payload rectangle 0.8 by 0.4 m, quasi static | Free box 0.8 by 0.4 by 0.15 m, 8 kg, Coulomb friction 0.5 with the floor, elliptic cone, impedance ratio 10 |
 | Friction threshold `3.5 - 1.0 n_latched`, floor 0.5 (2D units) | Static friction `0.5 (78.5 N - 25 N n_latched)`: 39 N with no latch, 27 N with one, 14 N with two |
 | Pusher force 1.0 along the inward normal when `u > 0` in contact | Cylinder on two slide joints with velocity servos limited to 10 N per axis; with `u > 0` in contact the command adds an inward component, so the robot presses on the face and the contact force is real |
-| Gripper latches at the boundary point, pulls with 0.3 in any direction | Latches kinematically: the body is written to one radius outside the boundary point every substep, the pull of at most 3 N acts on the payload at the boundary point as an external force with its torque, and 25 N upward at the payload center unloads the friction |
+| Gripper latches at the boundary point, pulls with 0.3 in any direction | Latches kinematically: the body is written to one radius outside the boundary point every substep, the pull of at most 3 N acts on the payload at the boundary point as an external force with its torque, and 25 N upward per latch at the payload center unloads the friction, bounded at 80 percent of the weight so the box never leaves the floor |
 | Scout applies no force | Servo limited to 3 N; it cannot move the payload |
 | Robots do not collide with each other | Collision groups: robots collide with the payload only, the payload with the floor and walls |
 | Time step 0.1 s | Physics step 0.01 s, decimation 10 |
@@ -71,6 +71,10 @@ seconds and exits the process above 8 GB, because MuJoCo Warp allocates outside 
 allocator that the fraction cap controls.
 
 ## 5. Known differences that can change results
+
+- The unloading force was unbounded in the first version. Four latched grippers lifted the box
+  off the floor and the transfer to large teams degraded. The bound fixed it and the transfer
+  cells were rerun (`results.md` section 13.7).
 
 - Contact is soft. Three pushers at 30 N against a 34 N threshold crept at 5 cm/s in the first
   configuration, which is why the margin was widened to 39 N.

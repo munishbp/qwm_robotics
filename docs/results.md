@@ -18,6 +18,7 @@ main finding.
 | H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Rule met (6, 6, 6, 4); the gain of search shrinks from +35 at lag 0 to +24 at lag 4 |
 | H3: best discount shrinks with staleness | Rule met (1.0, 0.7, 0.3, 0.0), all below no search | Rule met (0.9, 0.9, 0.9, 0.7); imagined value adds 9 to 11 points at lags 0 to 2 |
 | H4: elected leader beats independent search at matched compute | Rule met, but by a fallback to the plain policy | Refuted. Independent 69.0 against leader 41.1 and round robin 43.8 |
+| Transfer to 9, 12, 16 robots, zero shot | 89, 93, 96 percent without search | 57, 58, 64 without search, 90, 93, 97 with search |
 
 On the 2D task the critic is nearly flat across the policy's own candidates (values span 0.003),
 so ranking candidates by Q amplifies noise and search loses nine points. On mjlab, where actions
@@ -484,11 +485,11 @@ teammates is worse than six independent searches from fresh own sensing.
 
 | team | no search (%) | depth 2 search (%) |
 |---|---|---|
-| default | 47.4 ± 2.2 | 70.8 ± 2.6 |
-| p2g1s1 | 2.3 ± 0.5 | 1.3 ± 0.5 |
-| p4g4s1 | 28.6 ± 4.1 | 69.3 ± 2.3 |
-| p6g5s1 | 31.2 ± 0.5 | 53.6 ± 2.5 |
-| p8g7s1 | 25.8 ± 0.9 | 43.2 ± 0.9 |
+| default | 45.8 ± 1.4 | 66.4 ± 2.0 |
+| p2g1s1 | 2.6 ± 0.9 | 2.3 ± 0.8 |
+| p4g4s1 | 56.5 ± 2.9 | 90.4 ± 0.7 |
+| p6g5s1 | 57.6 ± 1.4 | 93.2 ± 0.5 |
+| p8g7s1 | 63.8 ± 1.4 | 96.6 ± 0.7 |
 
 
 ### Ablations on the snapshot (128 envs, 3 batches)
@@ -508,10 +509,15 @@ teammates is worse than six independent searches from fresh own sensing.
 | sampled policy, lag 2 | 67.4 ± 0.7 | 87.7 |
 
 
-Search keeps its lead at every dropout level. Transfer differs from 2D: the mean policy degrades
-on larger teams (29, 31, 26 percent at 9, 12, 16 robots) because more robots crowd the faces in
-real contact, and search recovers most of it (69, 54, 43). The 4 robot team is again unsolvable by
-construction. Messages help (27 percent masked against 44), the no search baseline is flat across
+Search keeps its lead at every dropout level. Transfer is positive: the mean policy runs zero shot
+at 56.5, 57.6, and 63.8 percent on 9, 12, and 16 robots, and search reaches 90.4, 93.2, and 96.6.
+A first version of these cells showed the mean policy falling to 26 percent at 16 robots. The
+physics review found the cause: the unloading force per latched gripper was unbounded, and four
+latched grippers lifted 100 N against a 78.5 N payload, so the box left the floor. The lift is now
+bounded at 80 percent of the weight (`swarm/env_mjlab.py`), the transfer cells were rerun, and
+the first version is kept in `runs/mjlab/results/transfer_unclamped_lift.json`. The default team
+has two grippers, so the snapshot and every other cell were unaffected. The 4 robot team is again
+unsolvable by construction. Messages help (27 percent masked against 44), the no search baseline is flat across
 staleness (the 2D rise with lag does not reproduce), and the sampled policy is the strong baseline
 discussed in 13.3.
 
@@ -549,7 +555,7 @@ discussed in 13.3.
 4. **The belief pipeline works in both physics.** Messages raise success from 13.5 to 50 percent
    on 2D and from 27 to 44 percent on mjlab, and the forward correction keeps eight frame old
    messages usable. The permutation invariant fusion transfers zero shot to 16 robots at 96 percent
-   on 2D; on mjlab the mean policy degrades on larger teams and search recovers most of the loss.
+   on 2D and to 16 robots at 64 percent without search and 97 percent with search on mjlab.
 
 5. **The sampled policy is the baseline a fair claim about search must beat.** On mjlab it reaches
    65 to 67 percent on its own. Against it the search's margin is 4 to 7 points and reaches 2 SE
@@ -568,7 +574,8 @@ discussed in 13.3.
   sweep are paired on the same snapshot and the same first episodes, so they are the reliable part.
 - The mjlab run is a single seed at 24,000 steps with a 45 percent baseline. Its transfer and
   ablation cells use 128 envs. The mjlab physics simplifies latching (kinematic attachment and a
-  central unloading force) and gives a cylinder against a box at most one contact point.
+  central unloading force bounded at 80 percent of the weight) and gives a cylinder against a box
+  at most one contact point.
 - The critic values the behavior data (SARSA target), not the learned policy. This was needed for
   stability and it is documented, but it means the critic's action ranking is that of a mixture of
   the scripted controller and the collection policy.
