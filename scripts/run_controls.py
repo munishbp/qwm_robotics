@@ -22,6 +22,12 @@ compute.limit_memory()
 
 import torch  # noqa: E402  the memory cap has to come first
 
+import os  # noqa: E402
+import sys  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from common import TEAMS, env_config, make_env  # noqa: E402
+
 from swarm.env import DEFAULT_TEAM, TYPE_GRIPPER, TYPE_PUSHER, TransportEnv  # noqa: E402
 from swarm.scripted import ScriptedController  # noqa: E402
 
@@ -36,7 +42,7 @@ def rollout(team: tuple[int, ...], num_envs: int, device: str, seed: int) -> dic
     The env auto resets, so the run keeps a done mask and records each env only once. A later
     episode in the same env would bias the mean toward the short episodes.
     """
-    env = TransportEnv(num_envs, team=team, device=device, seed=seed)
+    env = _make(num_envs, team, device, seed)
     control = ScriptedController(env)
     done = torch.zeros(num_envs, dtype=torch.bool, device=env.device)
     success = torch.zeros_like(done)
@@ -65,7 +71,7 @@ def rollout(team: tuple[int, ...], num_envs: int, device: str, seed: int) -> dic
 
 def throughput(num_envs: int, device: str, seed: int) -> dict[str, float]:
     """Measure env steps per second with random actions after a warmup."""
-    env = TransportEnv(num_envs, team=DEFAULT_TEAM, device=device, seed=seed)
+    env = _make(num_envs, DEFAULT_TEAM, device, seed)
     shape = (num_envs, env.num_robots, 3)
     for _ in range(WARMUP_STEPS):
         env.step(torch.rand(shape, device=env.device) * 2.0 - 1.0)
@@ -86,6 +92,15 @@ def throughput(num_envs: int, device: str, seed: int) -> dict[str, float]:
         "batched_steps_per_second": TIMED_STEPS / elapsed,
         "env_steps_per_second": TIMED_STEPS * num_envs / elapsed,
     }
+
+
+def _make(num_envs, team, device, seed):
+    """Build the task on the simulator that SWARM_SIM names, with an arbitrary team."""
+    if os.environ.get("SWARM_SIM", "2d") == "mjlab":
+        from swarm.env_mjlab import MjlabTransportEnv
+
+        return MjlabTransportEnv(num_envs, team=tuple(team), device=device, cfg=env_config(), seed=seed)
+    return TransportEnv(num_envs, team=tuple(team), device=device, cfg=env_config(), seed=seed)
 
 
 def main() -> None:

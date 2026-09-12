@@ -34,8 +34,30 @@ def setup(seed: int) -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def make_env(num_envs: int, seed: int, training: bool, team: str = "default", device: str = "cuda") -> TransportEnv:
-    return TransportEnv(clamp_envs(num_envs, training), team=TEAMS[team], device=device, cfg=EnvConfig(), seed=seed)
+SIM = os.environ.get("SWARM_SIM", "2d")
+
+
+def env_config() -> EnvConfig:
+    """The task constants for the selected simulator.
+
+    On mjlab the robots are velocity servos that accelerate, so a higher top speed gives the same
+    reach per episode as the 2D task's instantaneous motion. Every other constant is shared.
+    """
+    if SIM == "mjlab":
+        return EnvConfig(v_max=2.5)
+    return EnvConfig()
+
+
+def make_env(num_envs: int, seed: int, training: bool, team: str = "default", device: str = "cuda"):
+    """Build the task on the simulator named by the SWARM_SIM environment variable (2d or mjlab)."""
+    n = clamp_envs(num_envs, training)
+    if SIM == "mjlab":
+        from swarm.env_mjlab import MjlabTransportEnv
+
+        return MjlabTransportEnv(n, team=TEAMS[team], device=device, cfg=env_config(), seed=seed)
+    if SIM != "2d":
+        raise ValueError(f"SWARM_SIM must be 2d or mjlab, got {SIM}")
+    return TransportEnv(n, team=TEAMS[team], device=device, cfg=env_config(), seed=seed)
 
 
 def write_json(path: str, data: dict) -> None:
