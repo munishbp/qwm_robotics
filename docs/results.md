@@ -329,7 +329,8 @@ for the mapping and its measurements). Everything else is identical: the interfa
 the scripts, the protocol, and the seeds. The belief run trained for 24,000 steps (6.1 million
 transitions, 66 minutes) because 12,000 steps left it at 29 percent and still rising. The tables
 are in `results_tables_mjlab.md` and the data in `runs/mjlab/results/`. The figures are in
-`runs/mjlab/figures/`.
+`runs/mjlab/figures/`, and the episode replay is published at
+https://claude.ai/code/artifact/ab21a3ea-43b5-4b16-9d19-e784ca34ef81.
 
 ### 13.1 Controls and training
 
