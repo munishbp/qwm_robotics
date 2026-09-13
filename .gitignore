@@ -37,3 +37,5 @@ runs/*/run_all.*
 runs/*/*.pid
 runs/*/*.log
 results/day1.log
+results/day*.log
+results/day*.pid
