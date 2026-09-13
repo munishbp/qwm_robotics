@@ -14,15 +14,23 @@
       "success": 0.0,
       "success_at_reset": 0.0,
       "success_in_first_5_steps": 0.0,
-      "max_payload_step_m": 0.014070520177483559,
+      "max_payload_step_m": 0.020223315805196762,
       "nan": false
     },
     {
       "policy": "trained mean policy",
-      "success": 0.4375,
+      "success": 0.5234375,
       "success_at_reset": 0.0,
       "success_in_first_5_steps": 0.0,
-      "max_payload_step_m": 0.33951783180236816,
+      "max_payload_step_m": 0.34954604506492615,
+      "nan": false
+    },
+    {
+      "policy": "trained policy with depth 6 search",
+      "success": 0.6875,
+      "success_at_reset": 0.0,
+      "success_in_first_5_steps": 0.0,
+      "max_payload_step_m": 0.26120394468307495,
       "nan": false
     }
   ]

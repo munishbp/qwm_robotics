@@ -828,7 +828,7 @@ the earlier draft named.
 
 #### 10.7 What the bound says about the measured numbers
 
-Across three mjlab seeds the gain of depth 6 search over the sampled policy is +19.3, +14.9, and +5.9 points at lags 0,
+Across three mjlab seeds the gain of depth 6 search over the sampled policy is +19.8, +14.0, and +5.9 points at lags 0,
 1, and 4. By equations (42) and (50) the gain falls through the single term $c\,\Delta(L) =
 c\,\iota\,G_{\Lambda_1}(L)$, so the shape of the fall reads $\Lambda_1$ directly: a linear fall means $\Lambda_1 =
 1$, a convex accelerating fall means $\Lambda_1 > 1$, and a saturating fall means $\Lambda_1 < 1$. A least squares line

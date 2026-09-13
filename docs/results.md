@@ -553,17 +553,23 @@ over 3 batches) are of the same size as that floor.
 
 ### 13.9 What the two simulators say together
 
-- The search mechanism of QWM transfers to a decentralized heterogeneous team when the critic can
-  rank actions. Whether it can depends on the task's physics, not on the search. The 2D task's
-  quasi static dynamics made the critic action flat; contact physics did not.
-- The staleness effects are real in both: the value of imagination falls with the age of teammate
-  information, whether imagination helps overall (mjlab) or not (2D).
-- Broadcast joint search loses to independent search in both simulators.
-- The right no search baseline for a stochastic policy is the sampled policy, which this protocol
-  did not use in its decision rules. The H1 gain against that baseline is smaller and reaches
-  significance only at depth 4 to 6.
+- The search mechanism of QWM transfers to a decentralized heterogeneous team on the contact
+  physics task and not on the quasi static one. Sections 14 to 19 test why: demonstration
+  quality, the critic's action span, and momentum are eliminated; the contact model and the
+  servo dynamics remain.
+- The staleness effects are real in both: the value of imagination falls with the age of
+  teammate information, whether imagination helps overall (mjlab) or not (2D).
+- Broadcast joint search loses to independent search in both simulators, with and without the
+  election confound (section 14.5).
+- The right no search baseline for a stochastic policy is the sampled policy. Against it the
+  mjlab gain is measured in sections 14.1 and 16 with paired intervals.
 
 ## 14. First day controls
+
+A note on noise that applies to sections 14 to 19: a repeated evaluation of the same cell on the
+same snapshot differs by up to about 2 points (section 13.8), a single 128 env by 3 batch cell
+carries a standard error of 1 to 4 points, and a snapshot differs from another training seed by
+5 to 10 points (section 16). A difference below 2 points between two cells is not a finding.
 
 The controls of `next_steps.md` "The first day" ran on both snapshots after the review
 (`scripts/day1.sh`, data in `results/day1_controls.json` and `runs/mjlab/results/day1_controls.json`).
@@ -678,6 +684,7 @@ ways a result of this kind is usually hollow.
 | Episodes successful at reset or within 5 steps under the trained policy | 0.0 | 0.0 |
 | Largest payload displacement in one step under the trained policy | 0.097 m (friction model ceiling 0.105) | 0.34 m (3.4 m/s, an 8 kg box a 30 N push accelerates at 2.75 m/s²; it slides on momentum faster than the 2.5 m/s robots) |
 | NaN in the payload state | none | none |
+| Trained policy with depth 6 search (mjlab seed 0) | | success 68.8, none at reset or within 5 steps, largest step 0.26 m, no NaN |
 
 Static checks on the test time path: the search reads each robot's own message table and, for the
 decoded scorer control only, the goal relative to the robot from its own observation; the full
@@ -722,7 +729,9 @@ per episode outcomes; the first run gave 19.3, 14.9, 5.9 at lags 0, 1, 4, within
 floor). **H2 holds as a curve:** with lags 2 and 8 added (`runs/mjlab*/results/lag_curve.json`,
 256 envs and 5 batches), the mean gain is +19.8, +14.0, +9.3, +5.5, −0.3 at lags 0, 1, 2, 4, 8.
 It falls monotonically and reaches zero at eight frames. The sign agrees in 3 of 3 seeds up to
-lag 2 and in 2 of 3 at lags 4 and 8. A least squares line through the five points has a slope of
+lag 2 and in 2 of 3 at lags 4 and 8. Lags 0, 1, 4 come from the rerun with per episode outcomes
+and lags 2, 8 from the earlier lag curve run; the two runs agree within the 2 point floor where
+they overlap. A least squares line through the five points has a slope of
 about −2.4 points per frame of staleness. `figures/paper/gain_vs_staleness.png` draws it per seed with the mean band.
 
 **The world model's contribution by seed** (random model control, section 14.2 protocol): a

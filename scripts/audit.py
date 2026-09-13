@@ -24,7 +24,7 @@ from swarm.rollout import Runner  # noqa: E402
 
 
 @torch.no_grad()
-def run(policy, label, ckpt, dev, E=128, seed=4242) -> dict:
+def run(policy, label, ckpt, dev, E=128, seed=4242, depth=-1) -> dict:
     env = make_env(E, seed, False, device=dev)
     st = env.state()
     gap0 = (st["payload"][:, :2] - st["goal"][:, :2]).norm(dim=-1)
@@ -44,7 +44,9 @@ def run(policy, label, ckpt, dev, E=128, seed=4242) -> dict:
     prev = st["payload"].clone()
     for t in range(env.cfg.horizon):
         if runner:
-            out = runner.step("mean")
+            from swarm.search import SearchConfig
+
+            out = runner.step("search", search_cfg=SearchConfig(depth=depth, beta=0.9)) if depth >= 0 else runner.step("mean")
             term, trunc = out["terminated"], out["truncated"]
         else:
             _, _, term, trunc, _ = env.step(policy(env))
@@ -69,6 +71,7 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt", default="checkpoints/belief_best.pt")
     p.add_argument("--out", default="results/audit.json")
+    p.add_argument("--depth", type=int, default=-1, help="also audit the search policy at this depth")
     args = p.parse_args()
     dev = setup(0)
     rows = [
@@ -76,6 +79,8 @@ def main() -> None:
         run(lambda env: torch.rand(env.num_envs, env.num_robots, 3, device=dev) * 2 - 1, "random actions", None, dev),
         run(None, "trained mean policy", args.ckpt, dev),
     ]
+    if args.depth >= 0:
+        rows.append(run(None, f"trained policy with depth {args.depth} search", args.ckpt, dev, depth=args.depth))
     write_json(args.out, {"sim": SIM, "rows": rows})
 
 
