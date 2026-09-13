@@ -29,6 +29,7 @@ A primer on every concept the proposal depends on is in [concepts.md](concepts.m
 | [runs/mjlab/figures/viewer.html](runs/mjlab/figures/viewer.html) | The same replay on mjlab (published at https://claude.ai/code/artifact/ab21a3ea-43b5-4b16-9d19-e784ca34ef81) |
 | [docs/mjlab_port.md](docs/mjlab_port.md) | How the task maps onto mjlab and what it measures |
 | [docs/results_tables_mjlab.md](docs/results_tables_mjlab.md) | Every mjlab result table |
+| [docs/results_tables_seeds.md](docs/results_tables_seeds.md) | The fair H1 arms across three mjlab training seeds |
 
 ## Stack
 

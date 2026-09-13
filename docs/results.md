@@ -14,8 +14,8 @@ main finding.
 
 | Hypothesis | 2D simulator | mjlab |
 |---|---|---|
-| H1: search improves the decentralized baseline | Refuted. Depth 2: 43.2 against 52.3 for the mean action | Confirmed. Depth 2: 69.5 against 45.1 for the mean action; depth 6 beats the sampled policy by 12.8 at lag 0 and 7.1 at lag 1 (section 14.1) |
-| H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Rule met (6, 6, 6, 4); against the sampled policy the gain of search is +12.8, +7.1, −2.9 at lags 0, 1, 4 |
+| H1: search improves the decentralized baseline | Refuted. Depth 2: 43.2 against 52.3 for the mean action | Confirmed. Depth 6 beats the sampled policy in 3 of 3 seeds: +19.3 ± 6.3 at lag 0, +14.9 ± 7.4 at lag 1 (section 16) |
+| H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Rule met (6, 6, 6, 4); across 3 seeds the gain of search over the sampled policy is +19.3, +14.9, +5.9 at lags 0, 1, 4 |
 | H3: best discount shrinks with staleness | Rule met (1.0, 0.7, 0.3, 0.0), all below no search | Rule met (0.9, 0.9, 0.9, 0.7); imagined value adds 9 to 11 points at lags 0 to 2 |
 | H4: elected leader beats independent search at matched compute | Rule met, but by a fallback to the plain policy | Refuted. Independent 69.0 against leader 41.1 and round robin 43.8 |
 | Transfer to 9, 12, 16 robots, zero shot | 89, 93, 96 percent without search | 57, 58, 64 without search, 90, 93, 97 with search |
@@ -683,18 +683,48 @@ One observation from the audit that is not a hack but is worth knowing: the mjla
 launches the payload, which then slides at up to 3.4 m/s ahead of the robots. The success test is
 on the pose at rest or in motion alike, so a payload that slides through the goal pose counts.
 
+## 16. Three training seeds on mjlab
+
+Two more belief agents were trained on mjlab with seeds 1 and 2 (24,000 steps each, the same
+recipe, the same offline buffer) and the fair H1 arms were run on each at 256 envs and 5 batches
+(`scripts/day2.sh`, data in `runs/mjlab_seed1/` and `runs/mjlab_seed2/`, tables in
+`results_tables_seeds.md`). Best training evaluations: 48.4, 40.2, 36.7 percent.
+
+| Lag | Sampled policy | Random candidate | Depth 0 | Depth 6, beta 0.9 | Depth 6 minus sampled, per seed |
+|---|---|---|---|---|---|
+| 0 | 53.5 ± 6.5 | 50.7 ± 7.5 | 70.5 ± 7.8 | 72.8 ± 5.3 | +12.8, +25.3, +19.8 |
+| 1 | 58.5 ± 6.7 | 56.4 ± 6.7 | 71.1 ± 8.8 | 73.4 ± 5.3 | +7.2, +21.9, +15.5 |
+| 4 | 60.2 ± 5.5 | 58.7 ± 5.5 | 65.7 ± 9.8 | 66.1 ± 5.7 | −2.9, +12.5, +8.0 |
+
+Mean and standard deviation across the three seeds.
+
+**H1 against the fair baseline holds across seeds.** Depth 6 search beats the sampled policy in
+3 of 3 seeds at lags 0 and 1, by 19.3 ± 6.3 and 14.9 ± 7.4 points. **H2 holds in the mean and
+not in every seed:** the gain falls to 5.9 ± 7.9 at lag 4 with the sign agreeing in 2 of 3 seeds.
+The seed to seed spread of a single arm is 5 to 10 points, which is the number every earlier
+"confirmed" verdict from one snapshot should be read against.
+
+**The mechanism claim of section 14 was a seed 0 property.** On seed 0 the critic argmax never
+beat a random candidate and the rollout added 9 points. On seeds 1 and 2 the argmax alone reaches
+70 to 80 percent, 20 points above the sampled policy, and depth 6 adds nothing over it (−1.4,
+−0.5 at lag 0; −1.4, −2.2 at lag 1). Across seeds the search's gain over the sampled policy is
+real and the split between "the critic ranks the candidates" and "the rollout finds what the
+critic cannot see" is seed dependent. The random world model control of section 14.2 ran on
+seed 0 only. What is stable is the sum: depth 6 search wins, and the window closes with
+staleness.
+
 ## 11. Conclusions
 
-1. **Test time world model search helps a decentralized heterogeneous team when the rollout
-   tells the critic something the root belief does not, and hurts otherwise.** On mjlab depth 6
-   search beats the sampled policy by 12.8 points at lag 0 and 7.1 at lag 1 (256 envs, 5 batches),
-   a random world model costs 11 to 13 points, and the critic argmax alone never beats a random
-   candidate. On the 2D simulator the same code loses to every baseline on two snapshots, one with
-   near perfect demonstrations and one with 61 percent demonstrations, and a random model costs
-   only 4 points there. The critic's action span is not the mediator: raising it on 2D from 0.66
-   to 1.07 times the ensemble noise did not make search help (section 14.6). The informativeness
-   of the rollout is the best supported one, and it is measured by the random model control, not
-   yet by an independent quantity.
+1. **Test time search helps a decentralized heterogeneous team on the contact physics task and
+   hurts on the quasi static one.** On mjlab, depth 6 search beats the sampled policy in 3 of 3
+   training seeds at lags 0 and 1 (+19.3 ± 6.3 and +14.9 ± 7.4 points at 256 envs and 5 batches).
+   On the 2D simulator the same code loses to every baseline on two snapshots, one with near
+   perfect demonstrations and one with 61 percent demonstrations. Which part of the search carries
+   the mjlab gain is seed dependent: in one seed the rollout (a random world model costs 11
+   points, the critic argmax adds nothing), in two seeds the critic argmax (the rollout adds
+   nothing over it). The critic's action span is not the mediator (section 14.6). What separates
+   the simulators is not settled; the candidates that remain are the informativeness of the
+   rollout and the action dependence of the value, and both vary by seed.
 
 2. **Stale teammate information degrades the search in the direction H2 and H3 predicted, in both
    simulators.** On mjlab the gain of search falls from +35 points at lag 0 to +24 at lag 4 while
@@ -712,11 +742,9 @@ on the pose at rest or in motion alike, so a payload that slides through the goa
    on 2D and to 16 robots at 64 percent without search and 97 percent with search on mjlab.
 
 5. **Against the fair baseline, the sampled policy, search wins on mjlab at fresh to one frame old
-   teammate information and not at four frames.** At 256 envs and 5 batches, depth 6 beats the
-   sampled policy by 12.8 points at lag 0 and 7.1 at lag 1, past 2 SE, and by −2.9 at lag 4
-   (section 14.1). The critic argmax alone never beats a random candidate; the world model rollout
-   carries the gain, and a random model loses 11 points. This replaces the earlier unresolved
-   statement.
+   teammate information, and the gain shrinks with staleness.** Across three training seeds at 256
+   envs and 5 batches, depth 6 beats the sampled policy by 19.3 ± 6.3 at lag 0, 14.9 ± 7.4 at lag
+   1, and 5.9 ± 7.9 at lag 4, the last with the sign agreeing in 2 of 3 seeds (section 16).
 
 6. **Getting an off policy learner to train at all on this task took nine documented changes**,
    each a way the RLPD and QWM recipe breaks under sparse reward and partial observability. The
@@ -728,7 +756,8 @@ on the pose at rest or in motion alike, so a payload that slides through the goa
 
 - One training seed for the snapshot and one for each baseline. Cell to cell comparisons within a
   sweep are paired on the same snapshot and the same first episodes, so they are the reliable part.
-- The mjlab run is a single seed at 24,000 steps with a 45 percent baseline. Its transfer and
+- The mjlab sweeps (sections 13.4 to 13.7) are a single seed; the fair H1 arms have three seeds
+  (section 16). The 2D study is a single seed per task version. Its transfer and
   ablation cells use 128 envs. The mjlab physics simplifies latching (kinematic attachment and a
   central unloading force bounded at 80 percent of the weight) and gives a cylinder against a box
   at most one contact point.
