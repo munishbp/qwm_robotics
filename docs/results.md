@@ -754,6 +754,35 @@ distribution ranks the candidates itself. QWM reported that collecting with sear
 evaluating with search are complementary; here collecting with search moved the value from the
 policy into the critic rather than raising the ceiling. One seed.
 
+## 18. The momentum variant of the 2D task
+
+To test whether the 2D negative comes from the quasi static dynamics, the 2D task was given
+payload inertia (2 kg, the friction thresholds unchanged, Coulomb friction decelerating a moving
+payload) and the pipeline was rerun on it (`runs/2d_momentum/`, `EnvConfig.dynamics =
+"momentum"`, 12,000 steps). Scripted controller 59.8 percent, offline buffer 69.3 percent, best
+training evaluation 38.7.
+
+| Setting (128 envs, 3 batches, lag 1) | Success (%) |
+|---|---|
+| Mean policy (training evaluation) | 38.7 |
+| Sampled policy | 33.6 ± 1.2 |
+| Random candidate | 34.1 ± 0.3 |
+| Critic argmax, depth 0 | 20.3 ± 1.2 |
+| Depth 2 | 21.4 ± 1.7 |
+| Depth 6 | 25.0 ± 1.8 |
+| Random world model, depth 2 and 6 | 17.7 ± 2.2, 20.8 ± 1.4 |
+| Leader with fresh election, lag 1 and 4 | 14.8, 13.8 (independent 21.4, 16.1) |
+
+Search still loses, by 13 to 18 points, and the trained world model is again worth about 4
+points over a random one, as on the quasi static task. The critic span ratio is 1.09. With this
+result three explanations for the difference between the simulators are eliminated:
+demonstration quality (section 14.6), the critic's action span (14.6), and the absence of
+momentum (this section). What remains is the contact model itself: on mjlab a pusher pushes
+whenever it collides, with a real force limit, and the payload can be launched; on 2D a pusher
+applies a gated force along the inward normal only while `u > 0` and within a contact band, and
+the payload stops the moment the force stops. The mjlab robots also accelerate through a servo.
+The study did not separate these two.
+
 ## 11. Conclusions
 
 1. **Test time search helps a decentralized heterogeneous team on the contact physics task and
@@ -763,9 +792,10 @@ policy into the critic rather than raising the ceiling. One seed.
    perfect demonstrations and one with 61 percent demonstrations. Which part of the search carries
    the mjlab gain is seed dependent: in one seed the rollout (a random world model costs 11
    points, the critic argmax adds nothing), in two seeds the critic argmax (the rollout adds
-   nothing over it). The critic's action span is not the mediator (section 14.6). What separates
-   the simulators is not settled; the candidates that remain are the informativeness of the
-   rollout and the action dependence of the value, and both vary by seed.
+   nothing over it). The critic's action span is not the mediator (section 14.6), and neither is
+   momentum (section 18). What separates the simulators is not settled; the remaining
+   candidates are the contact model (pushing by collision under a force limit against a gated
+   normal force) and the servo dynamics of the mjlab robots.
 
 2. **Stale teammate information degrades the search in the direction H2 and H3 predicted, in both
    simulators.** On mjlab the gain of search falls from +35 points at lag 0 to +24 at lag 4 while
