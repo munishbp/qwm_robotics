@@ -28,6 +28,7 @@ A primer on every concept the proposal depends on is in [concepts.md](concepts.m
 | [figures/viewer.html](figures/viewer.html) | Interactive three.js episode replay, 2D simulator (published at https://claude.ai/code/artifact/b4442525-6e3f-4a68-8b0b-cf80dc7e8982) |
 | [runs/mjlab/figures/viewer.html](runs/mjlab/figures/viewer.html) | The same replay on mjlab (published at https://claude.ai/code/artifact/ab21a3ea-43b5-4b16-9d19-e784ca34ef81) |
 | [docs/mjlab_port.md](docs/mjlab_port.md) | How the task maps onto mjlab and what it measures |
+| [docs/mjlab_fidelity.md](docs/mjlab_fidelity.md) | Physics fidelity options: robot collision, lift at the latch, connect constraint latch, box pushers |
 | [docs/results_tables_mjlab.md](docs/results_tables_mjlab.md) | Every mjlab result table |
 | [docs/results_tables_seeds.md](docs/results_tables_seeds.md) | The fair H1 arms across three mjlab training seeds |
 

@@ -21,6 +21,9 @@ Physics mapping, in the units of the 2D task times ten:
 - The scout is a weak robot that cannot move the payload.
 - Walls are static boxes. Robots are limited to the arena by joint ranges. Robots do not
   collide with each other or with the floor.
+
+`MjlabConfig` carries four fidelity options. Every one defaults to the behavior above, so an
+existing result stays reproducible. See docs/mjlab_fidelity.md.
 """
 
 from __future__ import annotations
@@ -62,10 +65,25 @@ class MjlabConfig:
     lift_force: float = 25.0
     nconmax: int = 24
     njmax: int = 96
+    # Fidelity options. Each default reproduces the physics of docs/mjlab_port.md.
+    robot_collision: bool = False
+    lift: str = "central"
+    latch: str = "kinematic"
+    pusher_shape: str = "cylinder"
+
+    def __post_init__(self) -> None:
+        """Reject a bad option here, because a typo deep in the build gives a worse message."""
+        for name, value, allowed in (
+            ("lift", self.lift, ("central", "at_latch")),
+            ("latch", self.latch, ("kinematic", "connect")),
+            ("pusher_shape", self.pusher_shape, ("cylinder", "box")),
+        ):
+            if value not in allowed:
+                raise ValueError(f"MjlabConfig.{name} must be one of {allowed}, got {value!r}.")
 
 
 def build_spec(team: tuple[int, ...], cfg: EnvConfig, mj: MjlabConfig) -> mujoco.MjSpec:
-    """One world: floor, four walls, the payload box, and one cylinder per robot."""
+    """One world: floor, four walls, the payload box, and one body per robot."""
     spec = mujoco.MjSpec()
     spec.option.timestep = mj.physics_dt
     spec.compiler.autolimits = True
@@ -91,14 +109,32 @@ def build_spec(team: tuple[int, ...], cfg: EnvConfig, mj: MjlabConfig) -> mujoco
         contype=5, conaffinity=5, friction=[mj.friction, 0.005, 0.0001],
     )
     limit = a - cfg.robot_radius
+    # Bit 0 and bit 1 carry the robot, bit 2 the floor and the walls. A robot pair matches only
+    # when both robot masks hold both bits, so one flag turns robot to robot collision on and
+    # leaves the floor and the walls out.
+    robot_type, robot_aff = (3, 3) if mj.robot_collision else (2, 1)
     for k, t in enumerate(team):
         body = spec.worldbody.add_body(name=f"robot{k}", pos=[0, 0, mj.robot_height / 2])
         body.add_joint(name=f"r{k}x", type=mujoco.mjtJoint.mjJNT_SLIDE, axis=[1, 0, 0], range=[-limit, limit])
         body.add_joint(name=f"r{k}y", type=mujoco.mjtJoint.mjJNT_SLIDE, axis=[0, 1, 0], range=[-limit, limit])
+        if t == TYPE_PUSHER and mj.pusher_shape == "box":
+            # A box against the payload box takes the multicontact path, so the pusher gets more
+            # than one contact point and can carry a moment through its own patch.
+            geom_type = mujoco.mjtGeom.mjGEOM_BOX
+            geom_size = [cfg.robot_radius, cfg.robot_radius, mj.robot_height / 2]
+        else:
+            geom_type = mujoco.mjtGeom.mjGEOM_CYLINDER
+            geom_size = [cfg.robot_radius, mj.robot_height / 2, 0]
         body.add_geom(
-            name=f"robot{k}_geom", type=mujoco.mjtGeom.mjGEOM_CYLINDER,
-            size=[cfg.robot_radius, mj.robot_height / 2, 0], mass=2.0, contype=2, conaffinity=1,
+            name=f"robot{k}_geom", type=geom_type, size=geom_size, mass=2.0,
+            contype=robot_type, conaffinity=robot_aff,
         )
+        if t == TYPE_GRIPPER and mj.latch == "connect":
+            # The latch is inactive at compile. A latch writes `eq_active` and `eq_data` per world.
+            spec.add_equality(
+                name=f"latch{k}", type=mujoco.mjtEq.mjEQ_CONNECT,
+                objtype=mujoco.mjtObj.mjOBJ_BODY, name1=f"robot{k}", name2="payload", active=False,
+            )
         f = mj.force_limit[t]
         for axis in ("x", "y"):
             act = spec.add_actuator(name=f"a{k}{axis}", target=f"r{k}{axis}", trntype=mujoco.mjtTrn.mjTRN_JOINT)
@@ -135,11 +171,30 @@ class MjlabTransportEnv(TransportEnv):
 
     # Simulation setup.
 
+    def _solver_capacity(self) -> tuple[int, int]:
+        """Return the contact and the constraint row budget for the options in use.
+
+        Warning: MuJoCo Warp drops a contact or a row above the budget without an error, and the
+        solver then reports a wrong force. So the budget grows with the options that add rows.
+        """
+        mj = self.mj
+        nconmax, njmax = mj.nconmax, mj.njmax
+        if mj.robot_collision:
+            pairs = self.num_robots * (self.num_robots - 1) // 2
+            # A box pair takes the multicontact path and reaches four points; a convex pair one.
+            per_pair = 4 if mj.pusher_shape == "box" else 1
+            nconmax += pairs * per_pair
+            njmax += 3 * pairs * per_pair
+        if mj.latch == "connect":
+            njmax += 3 * int(self.is_gripper.sum())
+        return nconmax, njmax
+
     def _build_sim(self) -> None:
         mj = self.mj
         spec = build_spec(self.team, self.cfg, mj)
+        nconmax, njmax = self._solver_capacity()
         sim_cfg = SimulationCfg(
-            nconmax=mj.nconmax, njmax=mj.njmax,
+            nconmax=nconmax, njmax=njmax,
             mujoco=MujocoCfg(timestep=mj.physics_dt, integrator="implicitfast", iterations=30, ls_iterations=20, cone="elliptic", impratio=10.0),
         )
         self._sim = Simulation(self.num_envs, sim_cfg, spec=spec, device=str(self.device))
@@ -158,6 +213,34 @@ class MjlabTransportEnv(TransportEnv):
             [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"robot{i}") for i in range(k)], device=self.device
         )
         self.step_dt = mj.physics_dt * mj.decimation
+        if mj.latch == "connect":
+            self._build_latch_equalities()
+
+    def _build_latch_equalities(self) -> None:
+        """Expand `eq_data` to one row per world and record the equality id of every gripper.
+
+        `expand_model_fields` tiles the field and recaptures the CUDA graph once, here. Every
+        equality kernel then reads `eq_data[worldid % eq_data.shape[0]]`, so each world holds its
+        own anchor. The gripper side anchor stays at the body origin, so only the payload side
+        anchor changes at a latch.
+        """
+        model = self._sim.mj_model
+        gripper = [k for k in range(self.num_robots) if self.team[k] == TYPE_GRIPPER]
+        ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_EQUALITY, f"latch{k}") for k in gripper]
+        if any(i < 0 for i in ids):
+            raise RuntimeError("build_spec did not add one latch equality per gripper.")
+        self._latch_robot = torch.tensor(gripper, device=self.device)
+        self._latch_eq = torch.tensor(ids, device=self.device)
+        self._sim.expand_model_fields(("eq_data",))
+        rows = int(self._sim.model.eq_data.shape[0])
+        if rows != self.num_envs:
+            raise RuntimeError(
+                f"eq_data has {rows} world rows for {self.num_envs} envs, so a latch would "
+                "share one anchor across envs. Use latch='kinematic' with this mjlab version."
+            )
+        eq_data = self._sim.model.eq_data[:].clone()
+        eq_data[:, self._latch_eq, 0:3] = 0.0
+        self._sim.model.eq_data[:] = eq_data
 
     def _write_state(self, mask: Tensor) -> None:
         """Write the payload pose and the robot positions of the masked envs into the simulation."""
@@ -182,7 +265,31 @@ class MjlabTransportEnv(TransportEnv):
         d.qacc_warmstart[:] = torch.where(mask[:, None], torch.zeros_like(d.qacc_warmstart[:]), d.qacc_warmstart[:])
         d.xfrc_applied[:] = torch.zeros_like(d.xfrc_applied[:])
         d.ctrl[:] = torch.zeros_like(d.ctrl[:])
+        if self.mj.latch == "connect":
+            # `_reset_masked` already cleared `latched` for the masked envs. The env owns
+            # `eq_active`, because it never calls `Simulation.reset`, which is what restores
+            # `eq_active` from `eq_active0`. Without this write a latch leaks into the next
+            # episode and `forward` solves against a stale anchor.
+            self._write_latch(self.latched)
         self._sim.forward()
+
+    def _write_latch(self, latched: Tensor) -> None:
+        """Write the per world anchor and the active flag of every gripper equality.
+
+        The anchor sits one robot radius outside the latch point, so the constraint holds the
+        gripper where the kinematic latch used to write it. The write is idempotent: the anchor
+        only changes on the substep that latches.
+        """
+        d, model = self._sim.data, self._sim.model
+        anchor = self.latch_local + self.latch_normal_local * (self.cfg.robot_radius + 0.01)
+        eq_data = model.eq_data[:].clone()
+        eq_data[:, self._latch_eq, 3] = anchor[:, self._latch_robot, 0]
+        eq_data[:, self._latch_eq, 4] = anchor[:, self._latch_robot, 1]
+        eq_data[:, self._latch_eq, 5] = 0.0
+        model.eq_data[:] = eq_data
+        active = d.eq_active[:].clone()
+        active[:, self._latch_eq] = latched[:, self._latch_robot]
+        d.eq_active[:] = active
 
     def _read_state(self) -> None:
         """Read the payload pose and the robot positions back from the simulation."""
@@ -232,7 +339,9 @@ class MjlabTransportEnv(TransportEnv):
             # Velocity commands. A pusher in contact with u > 0 presses into the face.
             press = (self.is_pusher & hold & near).unsqueeze(-1)
             cmd = vel_cmd * cfg.v_max + torch.where(press, -contact.normal * cfg.v_max, torch.zeros_like(vel_cmd))
-            cmd = torch.where(self.latched.unsqueeze(-1), torch.zeros_like(cmd), cmd)
+            if mj.latch == "kinematic":
+                # A kinematically latched gripper is written, not driven, so it takes no command.
+                cmd = torch.where(self.latched.unsqueeze(-1), torch.zeros_like(cmd), cmd)
             ctrl = d.ctrl[:].clone()
             ctrl[:, self._robot_ctrl] = cmd[..., 0]
             ctrl[:, self._robot_ctrl + 1] = cmd[..., 1]
@@ -240,31 +349,44 @@ class MjlabTransportEnv(TransportEnv):
             # Latched grippers sit at their latch point and pull on the payload there.
             center = self.payload[:, None, :2]
             latch_world = center + to_world_vec(self.latch_local, self.payload)
-            body_world = center + to_world_vec(
-                self.latch_local + self.latch_normal_local * (cfg.robot_radius + 0.01), self.payload
-            )
-            if bool(self.latched.any()):
-                qpos = d.qpos[:].clone()
-                qvel = d.qvel[:].clone()
-                for axis in range(2):
-                    idx = self._robot_qpos + axis
-                    qpos[:, idx] = torch.where(self.latched, body_world[..., axis], qpos[:, idx])
-                    vidx = self._robot_qvel + axis
-                    qvel[:, vidx] = torch.where(self.latched, torch.zeros_like(qvel[:, vidx]), qvel[:, vidx])
-                d.qpos[:] = qpos
-                d.qvel[:] = qvel
-            grip = vel_cmd * mj.grip_force * self.latched.unsqueeze(-1)  # [E, K, 2]
+            if mj.latch == "kinematic":
+                body_world = center + to_world_vec(
+                    self.latch_local + self.latch_normal_local * (cfg.robot_radius + 0.01), self.payload
+                )
+                if bool(self.latched.any()):
+                    qpos = d.qpos[:].clone()
+                    qvel = d.qvel[:].clone()
+                    for axis in range(2):
+                        idx = self._robot_qpos + axis
+                        qpos[:, idx] = torch.where(self.latched, body_world[..., axis], qpos[:, idx])
+                        vidx = self._robot_qvel + axis
+                        qvel[:, vidx] = torch.where(self.latched, torch.zeros_like(qvel[:, vidx]), qvel[:, vidx])
+                    d.qpos[:] = qpos
+                    d.qvel[:] = qvel
+                grip = vel_cmd * mj.grip_force * self.latched.unsqueeze(-1)  # [E, K, 2]
+            else:
+                # The constraint carries the pull, so the gripper keeps its command and its own
+                # actuator supplies the force. A second external pull would double count it.
+                self._write_latch(self.latched)
+                grip = torch.zeros_like(vel_cmd)
             arm = latch_world - center
             torque_z = (arm[..., 0] * grip[..., 1] - arm[..., 1] * grip[..., 0]).sum(1)
             # The unloading force is bounded so the payload never leaves the floor: four latched
             # grippers would otherwise lift 100 N against a 78.5 N weight.
             weight = mj.payload_mass * 9.81
-            lift = (mj.lift_force * self.latched.sum(1).to(torch.float32)).clamp(max=0.8 * weight)
+            count = self.latched.sum(1).to(torch.float32)
+            lift = (mj.lift_force * count).clamp(max=0.8 * weight)
             wrench = torch.zeros(self.num_envs, 6, device=self.device)
             wrench[:, 0] = grip[..., 0].sum(1)
             wrench[:, 1] = grip[..., 1].sum(1)
             wrench[:, 2] = lift
             wrench[:, 5] = torque_z
+            if mj.lift == "at_latch":
+                # `xfrc_applied` acts at the body centre of mass, so the lift at a latch point
+                # becomes the same total force plus its moment r cross F about that centre.
+                share = (lift / count.clamp(min=1.0)).unsqueeze(-1) * self.latched
+                wrench[:, 3] = (arm[..., 1] * share).sum(1)
+                wrench[:, 4] = -(arm[..., 0] * share).sum(1)
             xfrc = torch.zeros_like(d.xfrc_applied[:])
             xfrc[:, self._payload_body] = wrench
             d.xfrc_applied[:] = xfrc
