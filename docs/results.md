@@ -696,13 +696,22 @@ recipe, the same offline buffer) and the fair H1 arms were run on each at 256 en
 (`scripts/day2.sh`, data in `runs/mjlab_seed1/` and `runs/mjlab_seed2/`, tables in
 `results_tables_seeds.md`). Best training evaluations: 48.4, 40.2, 36.7 percent.
 
-| Lag | Sampled policy | Random candidate | Depth 0 | Depth 6, beta 0.9 | Depth 6 minus sampled, per seed |
-|---|---|---|---|---|---|
-| 0 | 53.5 ± 6.5 | 50.7 ± 7.5 | 70.5 ± 7.8 | 72.8 ± 5.3 | +12.8, +25.3, +19.8 |
-| 1 | 58.5 ± 6.7 | 56.4 ± 6.7 | 71.1 ± 8.8 | 73.4 ± 5.3 | +7.2, +21.9, +15.5 |
-| 4 | 60.2 ± 5.5 | 58.7 ± 5.5 | 65.7 ± 9.8 | 66.1 ± 5.7 | −2.9, +12.5, +8.0 |
+| Lag | Depth 6 minus sampled policy, mean ± SD across 3 seeds | Per seed, with the paired bootstrap 95 percent interval over 1,280 episodes |
+|---|---|---|
+| 0 | +19.8 ± 8.9 | seed 0: +13.5 [+10.1, +17.0]; seed 1: +30.0 [+26.7, +33.3]; seed 2: +15.8 [+12.0, +19.4]. |
+| 1 | +14.0 ± 9.0 | seed 0: +4.5 [+1.1, +8.0]; seed 1: +22.4 [+19.0, +25.9]; seed 2: +15.2 [+11.8, +18.7]. |
+| 2 | +9.3 ± 8.6 | seed 0: +1.0 [-2.6, +4.3]; seed 1: +18.2 [+14.6, +21.6]; seed 2: +8.7 [+4.8, +12.3]. |
+| 4 | +5.5 ± 5.9 | seed 0: -0.5 [-4.2, +3.3]; seed 1: +11.2 [+7.3, +14.8]; seed 2: +5.9 [+2.3, +9.4]. |
+| 8 | -0.3 ± 9.5 | seed 0: -10.5 [-14.1, -6.6]; seed 1: +8.4 [+4.7, +11.8]; seed 2: +1.2 [-2.6, +4.8]. |
 
-Mean and standard deviation across the three seeds. `math.md` section 13 derives a bound in
+The arms were rerun with per episode outcomes (`runs/mjlab*/results/day1_controls_f1.json`,
+256 envs and 5 batches, the same env seeds for every arm), so each seed's difference is paired
+over its 1,280 first episodes and the interval is a bootstrap over those pairs. The interval
+excludes zero in every seed at lags 0 and 1, in seeds 1 and 2 at lags 2 and 4, and in seed 1
+only at lag 8. Seed 0 is the weakest snapshot for the search (its window closes by lag 2), seed 1
+the strongest (still +8 at lag 8).
+
+The full per arm tables are in `results_tables_seeds.md`. `math.md` section 13 derives a bound in
 which the staleness enters the search's score bias as an additive offset, and it reads the fall
 of the gain (+19.3, +14.9, +5.9) as linear in the lag, in agreement with the measured open loop
 error growth.

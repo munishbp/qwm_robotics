@@ -55,7 +55,8 @@ def paired_bootstrap(a: dict, b: dict, n: int = 1000, seed: int = 0):
 
 
 def main() -> None:
-    runs = sorted(d for d in glob.glob("runs/mjlab*") if load_rows(d))
+    # The collection variant (runs/mjlab_collect) is a different treatment, reported on its own.
+    runs = sorted(d for d in glob.glob("runs/mjlab*") if load_rows(d) and "collect" not in d)
     seeds = {os.path.basename(d): load_rows(d) for d in runs}
     print("### Fair H1 on mjlab across training seeds (256 envs, 5 batches per cell)\n")
     print("Per seed, the best evaluation success during training (2 batches of 128 envs):\n")

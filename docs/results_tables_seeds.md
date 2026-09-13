@@ -11,25 +11,25 @@ Per seed, the best evaluation success during training (2 batches of 128 envs):
 
 | Arm | mjlab | mjlab_seed1 | mjlab_seed2 | Mean ± SD across seeds |
 |---|---|---|---|---|
-| Sampled policy | 60.5 | 52.6 | 47.5 | 53.5 ± 6.5 |
-| Random candidate | 58.8 | 49.2 | 44.1 | 50.7 ± 7.5 |
-| Depth 0 | 64.3 | 79.3 | 67.8 | 70.5 ± 7.8 |
-| Depth 6, beta 0.9 | 73.3 | 77.9 | 67.3 | 72.8 ± 5.3 |
+| Sampled policy | 59.6 | 50.2 | 50.0 | 53.3 ± 5.5 |
+| Random candidate | 58.6 | 48.3 | 44.8 | 50.6 ± 7.2 |
+| Depth 0 | 64.8 | 79.6 | 67.6 | 70.7 ± 7.9 |
+| Depth 6, beta 0.9 | 73.1 | 80.2 | 65.8 | 73.0 ± 7.2 |
 
-Depth 6 minus sampled policy: mean +19.3 ± 6.3 across 3 seeds, sign positive in 3 of 3.
-Paired bootstrap 95 percent intervals per seed: mjlab: +12.8 [no per episode data]; mjlab_seed1: +25.3 [no per episode data]; mjlab_seed2: +19.8 [no per episode data].
+Depth 6 minus sampled policy: mean +19.8 ± 8.9 across 3 seeds, sign positive in 3 of 3.
+Paired bootstrap 95 percent intervals per seed: mjlab: +13.5 [+10.1, +17.0]; mjlab_seed1: +30.0 [+26.7, +33.3]; mjlab_seed2: +15.8 [+12.0, +19.4].
 
 #### Lag 1
 
 | Arm | mjlab | mjlab_seed1 | mjlab_seed2 | Mean ± SD across seeds |
 |---|---|---|---|---|
-| Sampled policy | 65.9 | 57.0 | 52.7 | 58.5 ± 6.7 |
-| Random candidate | 63.4 | 55.8 | 50.0 | 56.4 ± 6.7 |
-| Depth 0 | 62.6 | 80.2 | 70.4 | 71.1 ± 8.8 |
-| Depth 6, beta 0.9 | 73.0 | 78.8 | 68.2 | 73.4 ± 5.3 |
+| Sampled policy | 66.0 | 57.4 | 54.8 | 59.4 ± 5.9 |
+| Random candidate | 63.6 | 53.3 | 50.5 | 55.8 ± 6.9 |
+| Depth 0 | 61.7 | 78.4 | 71.2 | 70.4 ± 8.3 |
+| Depth 6, beta 0.9 | 70.5 | 79.8 | 69.9 | 73.4 ± 5.6 |
 
-Depth 6 minus sampled policy: mean +14.9 ± 7.4 across 3 seeds, sign positive in 3 of 3.
-Paired bootstrap 95 percent intervals per seed: mjlab: +7.2 [no per episode data]; mjlab_seed1: +21.9 [no per episode data]; mjlab_seed2: +15.5 [no per episode data].
+Depth 6 minus sampled policy: mean +14.0 ± 9.0 across 3 seeds, sign positive in 3 of 3.
+Paired bootstrap 95 percent intervals per seed: mjlab: +4.5 [+1.1, +8.0]; mjlab_seed1: +22.4 [+19.0, +25.9]; mjlab_seed2: +15.2 [+11.8, +18.7].
 
 #### Lag 2
 
@@ -45,13 +45,13 @@ Paired bootstrap 95 percent intervals per seed: mjlab: +1.0 [-2.6, +4.3]; mjlab_
 
 | Arm | mjlab | mjlab_seed1 | mjlab_seed2 | Mean ± SD across seeds |
 |---|---|---|---|---|
-| Sampled policy | 65.8 | 60.2 | 54.7 | 60.2 ± 5.5 |
-| Random candidate | 64.9 | 56.6 | 54.6 | 58.7 ± 5.5 |
-| Depth 0 | 54.5 | 73.0 | 69.5 | 65.7 ± 9.8 |
-| Depth 6, beta 0.9 | 62.9 | 72.7 | 62.7 | 66.1 ± 5.7 |
+| Sampled policy | 64.6 | 60.0 | 55.9 | 60.2 ± 4.4 |
+| Random candidate | 68.0 | 57.3 | 54.7 | 60.0 ± 7.0 |
+| Depth 0 | 55.4 | 75.0 | 68.0 | 66.1 ± 9.9 |
+| Depth 6, beta 0.9 | 64.1 | 71.2 | 61.7 | 65.7 ± 5.0 |
 
-Depth 6 minus sampled policy: mean +5.9 ± 7.9 across 3 seeds, sign positive in 2 of 3.
-Paired bootstrap 95 percent intervals per seed: mjlab: -2.9 [no per episode data]; mjlab_seed1: +12.5 [no per episode data]; mjlab_seed2: +8.0 [no per episode data].
+Depth 6 minus sampled policy: mean +5.5 ± 5.9 across 3 seeds, sign positive in 2 of 3.
+Paired bootstrap 95 percent intervals per seed: mjlab: -0.5 [-4.2, +3.3]; mjlab_seed1: +11.2 [+7.3, +14.8]; mjlab_seed2: +5.9 [+2.3, +9.4].
 
 #### Lag 8
 
