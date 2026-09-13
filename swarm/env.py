@@ -66,6 +66,11 @@ class EnvConfig:
     goal_angle_max: float = math.pi / 4
     start_clear: float = 1.0
     spawn_margin: float = 1.0
+    # "quasistatic": velocity follows the excess force at once (the original task).
+    # "momentum": the payload carries velocity; force accelerates it and Coulomb friction with the
+    # same thresholds decelerates it. Mass and inertia below apply to the momentum model only.
+    dynamics: str = "quasistatic"
+    payload_mass: float = 2.0
 
 
 def wrap_angle(angle: Tensor) -> Tensor:
@@ -210,6 +215,7 @@ class TransportEnv:
         self.latched = torch.zeros(*shape, dtype=torch.bool, device=device)
         self.latch_local = torch.zeros(*shape, 2, device=device)
         self.step_count = torch.zeros(num_envs, dtype=torch.long, device=device)
+        self.payload_vel = torch.zeros(num_envs, 3, device=device)  # momentum model only
 
         self._gen = torch.Generator(device=device)
         self.seed(seed)
@@ -285,6 +291,7 @@ class TransportEnv:
         self.latched = self.latched & ~keep
         self.latch_local = torch.where(keep[:, :, None], torch.zeros_like(pos), self.latch_local)
         self.step_count = torch.where(mask, torch.zeros_like(self.step_count), self.step_count)
+        self.payload_vel = torch.where(mask[:, None], torch.zeros_like(self.payload_vel), self.payload_vel)
 
     def step(
         self, actions: Tensor
@@ -331,10 +338,24 @@ class TransportEnv:
         )
         slip_torque = cfg.torque_frac * slip_force * cfg.payload_hx
 
-        magnitude = torch.linalg.vector_norm(force, dim=-1)
-        speed = (magnitude - slip_force).clamp(min=0.0) / cfg.drag_lin
-        velocity = force / magnitude.clamp(min=1e-9)[:, None] * speed[:, None]
-        spin = (torque.abs() - slip_torque).clamp(min=0.0) / cfg.drag_ang * _sign_nz(torque)
+        if cfg.dynamics == "momentum":
+            # Semi implicit Euler with Coulomb friction: the force accelerates the payload, then the
+            # friction removes up to slip_force * dt / m of speed. A force below the threshold
+            # cannot build speed, so the friction facts of the design hold.
+            m = cfg.payload_mass
+            inertia = m * (cfg.payload_hx**2 + cfg.payload_hy**2) / 3.0
+            v = self.payload_vel[:, :2] + force / m * cfg.dt
+            vmag = torch.linalg.vector_norm(v, dim=-1)
+            vmag_after = (vmag - slip_force * cfg.dt / m).clamp(min=0.0)
+            velocity = v / vmag.clamp(min=1e-9)[:, None] * vmag_after[:, None]
+            w = self.payload_vel[:, 2] + torque / inertia * cfg.dt
+            spin = (w.abs() - slip_torque * cfg.dt / inertia).clamp(min=0.0) * _sign_nz(w)
+            self.payload_vel = torch.cat((velocity, spin[:, None]), dim=-1)
+        else:
+            magnitude = torch.linalg.vector_norm(force, dim=-1)
+            speed = (magnitude - slip_force).clamp(min=0.0) / cfg.drag_lin
+            velocity = force / magnitude.clamp(min=1e-9)[:, None] * speed[:, None]
+            spin = (torque.abs() - slip_torque).clamp(min=0.0) / cfg.drag_ang * _sign_nz(torque)
 
         moved = self.payload[:, :2] + velocity * cfg.dt
         self.payload = torch.cat(

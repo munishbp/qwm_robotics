@@ -45,6 +45,8 @@ def env_config() -> EnvConfig:
     """
     if SIM == "mjlab":
         return EnvConfig(v_max=2.5)
+    if SIM == "2d_momentum":
+        return EnvConfig(dynamics="momentum")
     return EnvConfig()
 
 
@@ -55,8 +57,8 @@ def make_env(num_envs: int, seed: int, training: bool, team: str = "default", de
         from swarm.env_mjlab import MjlabTransportEnv
 
         return MjlabTransportEnv(n, team=TEAMS[team], device=device, cfg=env_config(), seed=seed)
-    if SIM != "2d":
-        raise ValueError(f"SWARM_SIM must be 2d or mjlab, got {SIM}")
+    if SIM not in ("2d", "2d_momentum"):
+        raise ValueError(f"SWARM_SIM must be 2d, 2d_momentum, or mjlab, got {SIM}")
     return TransportEnv(n, team=TEAMS[team], device=device, cfg=env_config(), seed=seed)
 
 

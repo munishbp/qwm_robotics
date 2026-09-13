@@ -59,6 +59,7 @@ def run_batch(agent: Agent, env, belief_cfg: BeliefConfig, policy: str,
         "ms_per_step": 1000 * wall,
         "finished": done_first.float().mean().item(),
         "envs": E,
+        "per_env_success": success.int().tolist(),
     }
 
 
@@ -73,7 +74,7 @@ def evaluate(agent: Agent, make_env, belief_cfg: BeliefConfig, policy: str = "me
         torch.manual_seed(seed + i)
         env = make_env(seed + i)
         rows.append(run_batch(agent, env, belief_cfg, policy, search_cfg, env.cfg.horizon))
-    out = {}
+    out = {"per_batch_success": [r.pop("per_env_success") for r in rows]}
     for k in rows[0]:
         vals = [r[k] for r in rows]
         mean = sum(vals) / len(vals)

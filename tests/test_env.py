@@ -30,9 +30,9 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 CONTACT_GAP = 0.22
 
 
-def _place(team, payload, robots, goal=(3.0, 0.0, 0.0)):
+def _place(team, payload, robots, goal=(3.0, 0.0, 0.0), cfg=None):
     """Return an env with a known pose, so a test can state the exact force that it applies."""
-    env = TransportEnv(1, team=team, device="cpu", seed=0)
+    env = TransportEnv(1, team=team, device="cpu", seed=0, cfg=cfg or CFG)
     env.payload = torch.tensor([list(payload)])
     env.goal = torch.tensor([list(goal)])
     env.robot_pos = torch.tensor([robots])
@@ -303,3 +303,21 @@ def test_scripted_controller_reaches_the_target_success_rate():
         success |= terminated & ~done
         done |= terminated | truncated
     assert success.float().mean().item() >= 0.6
+
+
+def test_momentum_dynamics_keeps_the_friction_facts():
+    """With momentum, three pushers still cannot move the payload and the mixed team can."""
+    import dataclasses
+
+    cfg = dataclasses.replace(CFG, dynamics="momentum")
+    face = -(CFG.payload_hx + CONTACT_GAP)
+    env = _place((TYPE_PUSHER,) * 3, (0.0, 0.0, 0.0), [[face, 0.3], [face, 0.0], [face, -0.3]], cfg=cfg)
+    moved = _drive(env, [[1.0, 0.0, 1.0]] * 3, 20)
+    assert torch.allclose(moved, torch.zeros_like(moved), atol=1e-4)
+    env = _place(
+        (TYPE_PUSHER, TYPE_PUSHER, TYPE_GRIPPER, TYPE_GRIPPER), (0.0, 0.0, 0.0),
+        [[face, 0.3], [face, -0.3], [CFG.payload_hx + CONTACT_GAP, 0.2], [CFG.payload_hx + CONTACT_GAP, -0.2]], cfg=cfg,
+    )
+    env.step(torch.tensor([[[0.0, 0.0, 0.0]] * 2 + [[0.0, 0.0, 1.0]] * 2]))
+    moved = _drive(env, [[1.0, 0.0, 1.0]] * 4, 20)
+    assert (moved > 0.2).all(), moved
