@@ -15,8 +15,8 @@ main finding.
 | Hypothesis | 2D simulator | mjlab |
 |---|---|---|
 | H1: search improves the decentralized baseline | Refuted. Depth 2: 43.2 against 52.3 for the mean action | Confirmed. Depth 6 beats the sampled policy in 3 of 3 seeds: +19.3 ± 6.3 at lag 0, +14.9 ± 7.4 at lag 1 (section 16) |
-| H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Rule met (6, 6, 6, 4); across 3 seeds the gain of search over the sampled policy is +19.3, +14.9, +5.9 at lags 0, 1, 4 |
-| H3: best discount shrinks with staleness | Rule met (1.0, 0.7, 0.3, 0.0), all below no search | Rule met (0.9, 0.9, 0.9, 0.7); imagined value adds 9 to 11 points at lags 0 to 2 |
+| H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Best depth rule unstable across reruns (6, 6, 6, 4 then 6, 2, 4, 1); the gain of search falls with staleness in every run and seed (+19.3, +14.9, +5.9 over the sampled policy at lags 0, 1, 4 across 3 seeds) |
+| H3: best discount shrinks with staleness | Rule met (1.0, 0.7, 0.3, 0.0), all below no search | Rule unstable across reruns; imagined value (beta above 0) helps at every lag and the gap shrinks at lag 4 |
 | H4: elected leader beats independent search at matched compute | Rule met, but by a fallback to the plain policy | Refuted. Independent 69.0 against leader 41.1 and round robin 43.8 |
 | Transfer to 9, 12, 16 robots, zero shot | 89, 93, 96 percent without search | 57, 58, 64 without search, 90, 93, 97 with search |
 
@@ -421,26 +421,29 @@ of 256 envs per cell, which `next_steps.md` costs.
 
 | Lag | no search | D=0 | D=1 | D=2 | D=4 | D=6 | best depth |
 |---|---|---|---|---|---|---|---|
-| 0 | 37.2 ± 2.7 | 60.7 ± 2.2 | 69.0 ± 2.5 | 70.8 ± 1.3 | 69.3 ± 1.3 | 72.7 ± 4.3 | 6 |
-| 1 | 44.0 ± 1.6 | 62.2 ± 1.1 | 68.0 ± 1.6 | 70.3 ± 2.3 | 68.2 ± 4.4 | 71.4 ± 2.5 | 6 |
-| 2 | 45.6 ± 0.7 | 56.5 ± 2.3 | 62.5 ± 1.4 | 62.8 ± 3.0 | 70.6 ± 2.1 | 71.6 ± 2.9 | 6 |
-| 4 | 38.8 ± 3.4 | 53.1 ± 0.5 | 58.3 ± 2.5 | 59.6 ± 1.6 | 63.0 ± 1.6 | 60.9 ± 4.3 | 4 |
+| 0 | 37.8 ± 2.7 | 61.7 ± 3.4 | 71.9 ± 1.6 | 67.7 ± 1.7 | 69.3 ± 2.1 | 74.0 ± 0.7 | 6 |
+| 1 | 43.8 ± 3.1 | 60.9 ± 1.2 | 67.2 ± 2.8 | 71.6 ± 1.4 | 70.8 ± 1.6 | 71.1 ± 1.2 | 2 |
+| 2 | 40.6 ± 1.8 | 61.7 ± 1.2 | 65.1 ± 2.1 | 66.4 ± 1.2 | 67.2 ± 2.5 | 66.7 ± 1.8 | 4 |
+| 4 | 44.3 ± 2.5 | 56.5 ± 0.7 | 61.7 ± 2.5 | 59.9 ± 1.0 | 59.6 ± 2.1 | 60.2 ± 1.2 | 1 |
 
-Best depth per lag: {0: 6, 1: 6, 2: 6, 4: 4}. H2 verdict: **confirmed** (non increasing: True, drop from lag 0 to 4: True).
+Best depth per lag: {0: 6, 1: 2, 2: 4, 4: 1}. H2 verdict: **not resolved** (non increasing: False, drop from lag 0 to 4: True).
 
-Cost of one step of imagination (depth 1 minus depth 0, points): lag 0: +8.3, lag 1: +5.7, lag 2: +6.0, lag 4: +5.2.
+Cost of one step of imagination (depth 1 minus depth 0, points): lag 0: +10.2, lag 1: +6.2, lag 2: +3.4, lag 4: +5.2.
 
-Best search cell minus no search (points): lag 0: +35.4, lag 1: +27.3, lag 2: +26.0, lag 4: +24.2.
+Best search cell minus no search (points): lag 0: +36.2, lag 1: +27.9, lag 2: +26.6, lag 4: +17.4.
 
-Cost: ms per step by depth at lag 1: D=-1: 28, D=0: 32, D=1: 34, D=2: 46, D=4: 75, D=6: 104.
+Cost: ms per step by depth at lag 1: D=-1: 29, D=0: 32, D=1: 35, D=2: 46, D=4: 75, D=6: 104.
 
-
-**Verdict: rule met, and this time above the baseline.** The best depth is 6 at lags 0 to 2 and 4
-at lag 4. The cleaner measurement is the gain of the best search cell over no search: +35.4,
-+27.3, +26.0, +24.2 points at lags 0, 1, 2, 4. Stale teammate information costs the search about
-11 points between lag 0 and lag 4, while the no search baseline is flat across lags (section
-13.7). The cost of one imagined step is positive at every lag (+8.3, +5.7, +6.0, +5.2 for depth 1
-minus depth 0), and it shrinks with staleness, which is the direction H2 predicted.
+**Verdict: the "best depth" rule is not stable, the gain is.** The table above is the rerun with
+per batch seeding (the first run, kept in `runs/mjlab/results/h2_preseed.json`, gave best depths
+6, 6, 6, 4 and the rule read "confirmed"; the rerun gives 6, 2, 4, 1 and the rule reads "not
+resolved"). The depths 1 to 6 differ by less than the noise at every lag, so an argmax over them
+is a coin toss. The measurement that is stable across both runs and across the three seeds of
+section 16 is the gain of search over the baseline and how it falls with staleness: the best
+search cell beats no search by +36.2, +27.9, +26.6, +17.4 points at lags 0, 1, 2, 4 in the rerun
+(+35.4, +27.3, +26.0, +24.2 in the first run), while the no search baseline is flat across lags
+(section 13.7). Stale teammate information costs the search 11 to 19 points between lag 0 and
+lag 4. That is the direction H2 predicted, measured on the gain rather than on a best depth.
 
 ### 13.5 H3: discount against staleness
 
@@ -448,18 +451,19 @@ minus depth 0), and it shrinks with staleness, which is the direction H2 predict
 
 | Lag | beta=0.0 | beta=0.1 | beta=0.3 | beta=0.5 | beta=0.7 | beta=0.9 | beta=1.0 | best beta |
 |---|---|---|---|---|---|---|---|---|
-| 0 | 62.2 ± 2.0 | 65.1 ± 1.6 | 69.3 ± 3.4 | 65.9 ± 3.6 | 66.4 ± 2.1 | 72.9 ± 0.3 | 67.2 ± 2.3 | 0.9 |
-| 1 | 58.3 ± 1.4 | 62.8 ± 0.9 | 68.5 ± 2.1 | 67.2 ± 0.9 | 68.5 ± 2.8 | 69.0 ± 1.1 | 68.5 ± 1.8 | 0.9 |
-| 2 | 60.2 ± 2.7 | 62.8 ± 2.1 | 64.8 ± 2.1 | 67.7 ± 2.8 | 65.9 ± 4.1 | 69.0 ± 0.7 | 66.9 ± 2.1 | 0.9 |
-| 4 | 54.7 ± 2.1 | 59.1 ± 1.4 | 58.3 ± 0.3 | 62.0 ± 1.4 | 63.5 ± 0.3 | 58.9 ± 2.3 | 58.6 ± 2.0 | 0.7 |
+| 0 | 60.2 ± 1.6 | 66.1 ± 1.8 | 67.7 ± 2.2 | 71.6 ± 0.9 | 68.2 ± 1.1 | 69.5 ± 2.4 | 73.2 ± 0.3 | 1.0 |
+| 1 | 62.2 ± 1.1 | 63.8 ± 2.3 | 66.1 ± 1.1 | 71.1 ± 1.2 | 73.2 ± 1.8 | 72.7 ± 4.6 | 68.0 ± 2.7 | 0.7 |
+| 2 | 60.7 ± 3.8 | 62.0 ± 3.2 | 65.1 ± 0.3 | 66.4 ± 0.5 | 66.7 ± 3.3 | 68.8 ± 4.1 | 68.0 ± 1.2 | 0.9 |
+| 4 | 54.2 ± 2.1 | 60.7 ± 1.8 | 62.5 ± 1.6 | 58.9 ± 1.9 | 58.9 ± 0.7 | 57.3 ± 1.7 | 59.1 ± 2.3 | 0.3 |
 
-Best beta per lag: {0: 0.9, 1: 0.9, 2: 0.9, 4: 0.7}. H3 verdict: **confirmed** (non increasing: True).
+Best beta per lag: {0: 1.0, 1: 0.7, 2: 0.9, 4: 0.3}. H3 verdict: **not resolved** (non increasing: False).
 
-
-**Verdict: rule met, mildly.** Imagined value helps at every lag. At lags 0 to 2 the best discount
-is 0.9 and beta 0 to 0.9 adds 9 to 11 points. At lag 4 the best is 0.7 and the curve is flatter,
-which is the predicted direction, but the difference between 0.7 and 0.9 at lag 4 (63.5 against
-58.9) is inside 2 SE.
+**Verdict: not resolved by the rule; imagined value helps at every lag.** The rerun's best
+discount per lag is 1.0, 0.7, 0.9, 0.3 (the first run: 0.9, 0.9, 0.9, 0.7), and the differences
+among discounts above 0.3 are inside the noise at every lag. The stable part is that beta 0
+(no imagined value) is the worst or near worst column at lags 0 to 2 and the gap to the best
+column shrinks at lag 4, which is the direction H3 predicted; the ordering among the nonzero
+discounts is not resolved by 128 envs and 3 batches.
 
 ### 13.6 H4: leader election
 
@@ -538,12 +542,14 @@ discussed in 13.3.
 ### 13.8 Repeated cells and evaluation noise
 
 The setting depth 2, lag 1, beta 0.5, independent mode, no dropout, default team appears in five
-sweep groups on mjlab and was evaluated five times on the same snapshot with the same env seeds:
-70.3, 69.0, 67.2, 67.2, 66.4 percent. The env seeds were fixed per batch but the torch RNG that
-draws the search candidates was seeded once per script, so the cells differ. The spread, about
-four points, is the empirical evaluation noise and it agrees with the reported standard errors.
-The same applies to the 2D sweeps (depth 0 against beta 0 at lag 4: 51.6 against 48.7). The
-evaluation now seeds the torch RNG per batch, so a rerun gives identical cells across groups.
+sweep groups on mjlab. In the first run, with the torch RNG seeded once per script, the five
+evaluations of that cell on the same snapshot and env seeds read 70.3, 69.0, 67.2, 67.2, 66.4.
+After the evaluation was changed to seed the torch RNG per batch, the sweeps were rerun (the
+tables in 13.4 to 13.7 are the rerun) and the same cell reads 71.6, 71.1, 69.3, 71.9, 69.5. The
+spread fell from 3.9 to 2.6 points but did not vanish: the remaining difference is CUDA kernel
+nondeterminism compounded over 150 steps of a contact simulation. A cell is therefore
+reproducible to about 2 points, not bit for bit, and the reported standard errors (1 to 4 points
+over 3 batches) are of the same size as that floor.
 
 ### 13.9 What the two simulators say together
 
