@@ -731,6 +731,29 @@ critic cannot see" is seed dependent. The random world model control of section 
 seed 0 only. What is stable is the sum: depth 6 search wins, and the window closes with
 staleness.
 
+## 17. Search during data collection
+
+The proposal's setting runs the search during online collection as well as at evaluation. One
+mjlab agent was trained with depth 2 search in the collection loop (`runs/mjlab_collect/`, seed 0,
+24,000 steps, 82 minutes against 66 without search) and its fair H1 arms were run at 256 envs
+and 5 batches.
+
+| Lag | Sampled policy | Random candidate | Depth 0 | Depth 6, beta 0.9 | Depth 6 minus sampled |
+|---|---|---|---|---|---|
+| 0 | 35.1 ± 1.3 | 36.3 ± 1.1 | 66.3 ± 1.5 | 69.2 ± 0.7 | +34.1 |
+| 1 | 43.9 ± 1.0 | 41.7 ± 1.1 | 69.5 ± 1.4 | 73.1 ± 0.9 | +29.2 |
+| 4 | 55.9 ± 0.9 | 55.2 ± 1.3 | 70.2 ± 1.4 | 70.2 ± 0.6 | +14.3 |
+
+Three things differ from the plain seeds (section 16). The collection success with search in
+the loop reached 83 percent against 50 to 56 for the plain runs' sampled collection, so the
+online buffer holds far more successes. The agent's policy alone is weaker (35 to 56 percent
+against 47 to 66), and its search is as strong as the best plain seed, so the gain of search is
+roughly doubled (+34, +29, +14) and it survives to lag 4. And its critic argmax at depth 0 is
+within 3 points of depth 6 at every lag, which says a critic trained on the search's own
+distribution ranks the candidates itself. QWM reported that collecting with search and
+evaluating with search are complementary; here collecting with search moved the value from the
+policy into the critic rather than raising the ceiling. One seed.
+
 ## 11. Conclusions
 
 1. **Test time search helps a decentralized heterogeneous team on the contact physics task and
