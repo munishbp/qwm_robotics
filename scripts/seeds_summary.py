@@ -21,8 +21,10 @@ LABELS = {"sampled": "Sampled policy", "random_candidate": "Random candidate", "
 
 
 def load_rows(run: str) -> list[dict]:
+    """The F1 arms come from the rerun with per episode outcomes when it exists."""
     rows = []
-    for name in ("day1_controls.json", "lag_curve.json"):
+    first = "day1_controls_f1.json" if os.path.exists(os.path.join(run, "results", "day1_controls_f1.json")) else "day1_controls.json"
+    for name in (first, "lag_curve.json"):
         path = os.path.join(run, "results", name)
         if os.path.exists(path):
             rows += [r for r in json.load(open(path))["rows"] if r.get("group") == "F1"]
