@@ -94,6 +94,27 @@ records the first episode of every env. The checkpoint with the best evaluation 
 snapshot for every test time experiment (`checkpoints/belief_best.pt`). The critic showed a late
 decline in every training run, so the final checkpoint is not used.
 
+## 5b. The programs after the first pipeline
+
+The first pipeline (section 4) produced the seed 0 snapshots and sweeps of `results.md` sections
+3 to 13. Four more driver scripts ran afterwards, each resumable by output file and each idling
+the GPU for 15 minutes after a training run:
+
+| Script | What it runs | Results sections |
+|---|---|---|
+| `scripts/day1.sh` | The first day controls on both snapshots (`scripts/day1_controls.py`): forward correction off, random world model, decoded and random scorers, leader with one fresh election, and on mjlab the fair H1 arms; then the demonstration quality control (a 2D buffer at 61 percent success, a retrain, `scripts/critic_span.py`) | 14 |
+| `scripts/day2.sh` | Two more mjlab training seeds with the fair H1 arms on each, then the mjlab sweep rerun with per batch seeding | 13.8, 16 |
+| `scripts/day3.sh` | Mechanism controls on the extra seeds, the staleness curve at lags 2 and 8 (`scripts/lag_curve.py`), search during collection, the momentum 2D variant, two more 2D seeds with H2, H2 on the extra mjlab seeds | 16 to 19 |
+| `scripts/day4.sh` | The fair H1 arms rerun on the three mjlab seeds with per episode outcomes for the paired bootstrap | 16 |
+
+**The fair H1 arms.** Four arms on the same env seeds: the sampled policy (the policy with its
+exploration noise), a random root candidate, depth 0 (critic argmax over nine candidates), and
+depth 6 search with beta 0.9. 256 envs and 5 batches per cell, env seeds 1000 to 1004, so every
+arm scores the same 1,280 first episodes. The decision rule for H1 against the fair baseline:
+depth 6 minus the sampled policy, paired over episodes, with a bootstrap 95 percent interval
+that excludes zero; across seeds the sign must agree in all three. The reward hacking audit is
+`scripts/audit.py` (section 15 of the results).
+
 ## 6. Evaluation protocol
 
 Every reported number is the mean over 3 batches, each batch from a different env seed (1000,

@@ -14,8 +14,8 @@ main finding.
 
 | Hypothesis | 2D simulator | mjlab |
 |---|---|---|
-| H1: search improves the decentralized baseline | Refuted across 3 seeds: the best search cell is −1.6, +0.8, −0.8 points against no search at lag 0 (section 19) | Confirmed. Depth 6 beats the sampled policy in 3 of 3 seeds: +19.3 ± 6.3 at lag 0, +14.9 ± 7.4 at lag 1 (section 16) |
-| H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Best depth rule unstable across reruns (6, 6, 6, 4 then 6, 2, 4, 1); the gain of search falls with staleness in every run and seed (+19.3, +14.9, +5.9 over the sampled policy at lags 0, 1, 4 across 3 seeds) |
+| H1: search improves the decentralized baseline | Refuted across 3 seeds: the best search cell is −1.6, +0.8, −0.8 points against no search at lag 0 (section 19) | Confirmed. Depth 6 beats the sampled policy in 3 of 3 seeds: +19.8 ± 8.9 at lag 0, +14.0 ± 9.0 at lag 1 (section 16) |
+| H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Best depth rule unstable across reruns (6, 6, 6, 4 then 6, 2, 4, 1); the mean gain of search over the sampled policy falls with staleness, +19.8, +14.0, +9.3, +5.5, −0.3 at lags 0 to 8 across 3 seeds, in 2 of 3 seeds individually (section 16) |
 | H3: best discount shrinks with staleness | Rule met (1.0, 0.7, 0.3, 0.0), all below no search | Rule unstable across reruns; imagined value (beta above 0) helps at every lag and the gap shrinks at lag 4 |
 | H4: elected leader beats independent search at matched compute | Rule met, but by a fallback to the plain policy | Refuted. Independent 69.0 against leader 41.1 and round robin 43.8 |
 | Transfer to 9, 12, 16 robots, zero shot | 89, 93, 96 percent without search | 57, 58, 64 without search, 90, 93, 97 with search |
@@ -121,9 +121,11 @@ it can add.
 H1 verdict: depth 2 minus no search = -9.1 points, 2 SE = 4.6 points, **refuted (search is worse)**.
 
 
-**Verdict: refuted.** Both search arms are nine to ten points below the mean action, far outside
-noise. The two arms are indistinguishable from each other, so the world model rollout neither
-helps nor hurts on top of the root ranking. The harm is in the ranking itself.
+**Verdict: refuted on this snapshot.** Both search arms are nine to ten points below the mean
+action, far outside noise. The two arms are indistinguishable from each other, so the world model
+rollout neither helps nor hurts on top of the root ranking. On the two later 2D seeds the search
+is within a few points of no search rather than below it (section 19), so the seed level verdict
+is "does not help"; the mechanism paragraph below describes this snapshot.
 
 **Mechanism.** On the best snapshot, across the nine root candidates (the mean action plus eight
 policy samples) the critic's values span 0.003 on a 0 to 1 scale. The argmax over a nearly flat
@@ -471,18 +473,18 @@ discounts is not resolved by 128 envs and 3 batches.
 
 | Lag | Mode | Success (%) | ms per step | Searches per env | Robots following | Leader disagreement |
 |---|---|---|---|---|---|---|
-| 1 | independent | 69.0 ± 1.7 | 47 | 6.00 | 1.00 | 0.00 |
-| 1 | leader | 41.1 ± 0.3 | 46 | 0.96 | 0.69 | 0.34 |
-| 1 | round_robin | 43.8 ± 3.9 | 46 | 1.00 | 1.00 | 0.00 |
-| 4 | independent | 60.9 ± 1.6 | 47 | 6.00 | 1.00 | 0.00 |
-| 4 | leader | 32.8 ± 1.2 | 45 | 0.95 | 0.65 | 0.40 |
-| 4 | round_robin | 32.6 ± 0.9 | 46 | 1.00 | 1.00 | 0.00 |
+| 1 | independent | 69.3 ± 1.8 | 47 | 6.00 | 1.00 | 0.00 |
+| 1 | leader | 39.8 ± 3.6 | 46 | 0.96 | 0.69 | 0.34 |
+| 1 | round_robin | 43.8 ± 0.5 | 46 | 1.00 | 1.00 | 0.00 |
+| 4 | independent | 58.9 ± 2.9 | 46 | 6.00 | 1.00 | 0.00 |
+| 4 | leader | 33.6 ± 1.6 | 45 | 0.95 | 0.66 | 0.39 |
+| 4 | round_robin | 36.7 ± 3.7 | 46 | 1.00 | 1.00 | 0.00 |
 
 H4 verdict: **refuted (leader is worse)**.
 
-
-**Verdict: refuted.** Independent search wins by 25 to 28 points over both leader modes, and the
-leader modes are no better than no search. On mjlab the leader disagreement is again about half,
+**Verdict: refuted.** Independent search wins by 25 to 30 points over both leader modes, and the
+leader modes are no better than no search (the table is the per batch seeded rerun; the first run
+gave 69.0 and 60.9 for independent search). On mjlab the leader disagreement is again about half,
 but here even the round robin variant, where everyone follows one leader's joint search, is far
 below independent search. A joint action searched from one robot's stale estimates of its
 teammates is worse than six independent searches from fresh own sensing.
@@ -493,22 +495,20 @@ teammates is worse than six independent searches from fresh own sensing.
 
 | dropout | no search (%) | depth 2 search (%) |
 |---|---|---|
-| 0.0 | 45.3 ± 1.2 | 67.2 ± 0.9 |
-| 0.1 | 50.3 ± 0.7 | 69.5 ± 3.9 |
-| 0.25 | 48.7 ± 4.2 | 69.3 ± 4.3 |
-| 0.5 | 44.5 ± 2.0 | 67.7 ± 1.7 |
-
+| 0.0 | 48.2 ± 3.0 | 71.9 ± 0.8 |
+| 0.1 | 50.0 ± 2.7 | 69.3 ± 2.6 |
+| 0.25 | 44.5 ± 1.6 | 71.1 ± 0.5 |
+| 0.5 | 45.1 ± 0.7 | 70.6 ± 1.8 |
 
 ### Transfer: team composition at lag 1 (trained on the default team)
 
 | team | no search (%) | depth 2 search (%) |
 |---|---|---|
-| default | 45.8 ± 1.4 | 66.4 ± 2.0 |
-| p2g1s1 | 2.6 ± 0.9 | 2.3 ± 0.8 |
-| p4g4s1 | 56.5 ± 2.9 | 90.4 ± 0.7 |
-| p6g5s1 | 57.6 ± 1.4 | 93.2 ± 0.5 |
-| p8g7s1 | 63.8 ± 1.4 | 96.6 ± 0.7 |
-
+| default | 46.1 ± 1.6 | 69.5 ± 0.9 |
+| p2g1s1 | 2.3 ± 0.5 | 3.1 ± 0.5 |
+| p4g4s1 | 56.5 ± 2.8 | 93.0 ± 1.2 |
+| p6g5s1 | 57.6 ± 3.6 | 94.5 ± 1.2 |
+| p8g7s1 | 65.6 ± 1.6 | 93.8 ± 1.8 |
 
 ### Ablations on the snapshot (128 envs, 3 batches)
 
@@ -694,7 +694,7 @@ on the pose at rest or in motion alike, so a payload that slides through the goa
 Two more belief agents were trained on mjlab with seeds 1 and 2 (24,000 steps each, the same
 recipe, the same offline buffer) and the fair H1 arms were run on each at 256 envs and 5 batches
 (`scripts/day2.sh`, data in `runs/mjlab_seed1/` and `runs/mjlab_seed2/`, tables in
-`results_tables_seeds.md`). Best training evaluations: 48.4, 40.2, 36.7 percent.
+`results_tables_seeds.md`). Best training evaluations: 48.4, 30.9, 30.1 percent.
 
 | Lag | Depth 6 minus sampled policy, mean ± SD across 3 seeds | Per seed, with the paired bootstrap 95 percent interval over 1,280 episodes |
 |---|---|---|
@@ -713,16 +713,17 @@ the strongest (still +8 at lag 8).
 
 The full per arm tables are in `results_tables_seeds.md`. `math.md` section 13 derives a bound in
 which the staleness enters the search's score bias as an additive offset, and it reads the fall
-of the gain (+19.3, +14.9, +5.9) as linear in the lag, in agreement with the measured open loop
+of the gain (+19.8, +14.0, +9.3, +5.5, −0.3) as linear in the lag, in agreement with the measured open loop
 error growth.
 
 **H1 against the fair baseline holds across seeds.** Depth 6 search beats the sampled policy in
-3 of 3 seeds at lags 0, 1 and 2, by 19.3 ± 6.3, 14.9 ± 7.4 and 9.3 ± 8.6 points. **H2 holds as a
-curve:** with lags 2 and 8 added (`runs/mjlab*/results/lag_curve.json`, 256 envs and 5 batches),
-the mean gain is +19.3, +14.9, +9.3, +5.9, −0.3 at lags 0, 1, 2, 4, 8. It falls monotonically
-and reaches zero at eight frames. The sign agrees in 3 of 3 seeds up to lag 2 and in 2 of 3 at
-lags 4 and 8. A least squares line through the five points has a slope of about −2.4 points per
-frame of staleness. `figures/paper/gain_vs_staleness.png` draws it per seed with the mean band.
+3 of 3 seeds at lags 0, 1 and 2, by 19.8 ± 8.9, 14.0 ± 9.0 and 9.3 ± 8.6 points (the rerun with
+per episode outcomes; the first run gave 19.3, 14.9, 5.9 at lags 0, 1, 4, within the 2 point
+floor). **H2 holds as a curve:** with lags 2 and 8 added (`runs/mjlab*/results/lag_curve.json`,
+256 envs and 5 batches), the mean gain is +19.8, +14.0, +9.3, +5.5, −0.3 at lags 0, 1, 2, 4, 8.
+It falls monotonically and reaches zero at eight frames. The sign agrees in 3 of 3 seeds up to
+lag 2 and in 2 of 3 at lags 4 and 8. A least squares line through the five points has a slope of
+about −2.4 points per frame of staleness. `figures/paper/gain_vs_staleness.png` draws it per seed with the mean band.
 
 **The world model's contribution by seed** (random model control, section 14.2 protocol): a
 random model costs 11 to 13 points on seed 0, 6.5 on seed 1, and 5 at depth 2 and 0 at depth 6
@@ -834,10 +835,12 @@ curve is `figures/paper/gain_vs_staleness.png`; the gain over no search by seed 
    normal force) and the servo dynamics of the mjlab robots.
 
 2. **Stale teammate information degrades the search in the direction H2 and H3 predicted, in both
-   simulators.** On mjlab the gain of search falls from +35 points at lag 0 to +24 at lag 4 while
-   the baseline stays flat, and the value of one imagined step falls from +8.3 to +5.2 points. On
-   2D the cost of one imagined step goes from +2.1 to −13.3 points. The best discount falls with
-   staleness in both (1.0 to 0.0 on 2D, 0.9 to 0.7 on mjlab).
+   simulators.** On mjlab the mean gain over the sampled policy falls from +19.8 at lag 0 to −0.3
+   at lag 8 across three seeds (section 16), and the gain over no search falls from +36 to +17
+   between lag 0 and lag 4 on seed 0 (section 13.4). On 2D the cost of one imagined step goes
+   from +2.1 to −13.3 points on seed 0. The best discount rules were unstable across reruns; the
+   stable statement is that imagined value helps at every lag on mjlab and the gap shrinks at lag
+   4 (section 13.5).
 
 3. **A broadcast joint search from one elected leader is worse than independent search.** On mjlab
    independent search beats both leader modes by 25 to 28 points, and the leader modes equal no
@@ -850,8 +853,9 @@ curve is `figures/paper/gain_vs_staleness.png`; the gain over no search by seed 
 
 5. **Against the fair baseline, the sampled policy, search wins on mjlab at fresh to one frame old
    teammate information, and the gain shrinks with staleness.** Across three training seeds at 256
-   envs and 5 batches, depth 6 beats the sampled policy by 19.3 ± 6.3 at lag 0, 14.9 ± 7.4 at lag
-   1, and 5.9 ± 7.9 at lag 4, the last with the sign agreeing in 2 of 3 seeds (section 16).
+   envs and 5 batches, depth 6 beats the sampled policy by 19.8 ± 8.9 at lag 0, 14.0 ± 9.0 at lag
+   1, and 5.5 ± 5.9 at lag 4, the last with the sign agreeing in 2 of 3 seeds, with a paired
+   bootstrap interval excluding zero in every seed at lags 0 and 1 (section 16).
 
 6. **Getting an off policy learner to train at all on this task took nine documented changes**,
    each a way the RLPD and QWM recipe breaks under sparse reward and partial observability. The

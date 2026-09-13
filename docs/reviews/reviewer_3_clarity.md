@@ -1,168 +1,171 @@
-# Reviewer 3: clarity, internal consistency, and completeness of explanation
+# Reviewer 3, round two: clarity, internal consistency, and completeness of explanation
 
 **Paper:** Decentralized World Model Search for Heterogeneous Cooperative Transport
-**Lens:** clarity, internal consistency, completeness of explanation
+**Lens:** clarity, internal consistency, completeness of explanation. **Round one gave Overall 4.**
 
 ## Summary
 
-The submission asks whether the test time world model search of QWM survives decentralization, partial observability, and stale teammate information. It answers with one trained snapshot per simulator and a grid of test time sweeps on it, run twice: on a batched 2D transport simulator and on mjlab. The headline inverts between the two simulators, and the authors present the inversion as the finding, which is honest and interesting. The repository is unusually complete: a proposal, a concepts primer, a design document, a mathematics document, a methodology, two result documents, two table documents, a port document, a next steps document, code, figures, and an interactive replay. The problem is that these documents disagree with each other and with the code, and the disagreements sit on load bearing constants and on the rules that decide the hypotheses. `math.md` describes an earlier version of the task throughout. `methodology.md` and `concepts.md` state the opposite of `design.md` and the code on the critic target. The same evaluation cell is reported five times with five different numbers and no explanation. The headline H2 figure shows a clean staircase that the paper's own text calls an artifact. I recommend rejection in the current form. I would change that if the documents were reconciled against the code and against each other.
+The authors answered the science I asked for. `results.md` grew six sections: the fair baseline against the sampled policy, three training seeds per simulator, a random world model control, a scorer control, a forward correction control, a leader control without the fallback, a demonstration quality control, a momentum variant of the 2D task, a reward hacking audit, and a search in collection run. `math.md` gained section 13, a bound with seven named assumptions and four results, and every number in it that a file can check, checks. Twenty of the sixty seven discrepancies I listed in round one are fixed and seven more are partly fixed. The critic target reads "mean" in every document. The task constants in `math.md` match `swarm/env.py`. The "twelve runs, nine rows" contradiction is explained. The repeated cell problem is measured and published as section 13.8.
+
+The new sections created a new defect, and it is worse than the old one. The study ran each measurement two or three times: a first sweep, a rerun under per batch seeding, and a second rerun with per episode outcomes. `results.md` now carries all three vintages at once and never says which is which. Section 13.4 states that sections 13.4 to 13.7 are the rerun. Sections 13.6 and 13.7 print the first run. Section 16 prints the paired rerun in its table and the superseded run in the paragraph under it. Section 1, section 5, and the conclusions carry the oldest numbers of all, and section 1 states a mechanism that section 14.6 refutes on the same page. A reader who reads front to back meets four different headline gains.
+
+I raise soundness from 2 to 3 and overall from 4 to 5. I hold presentation at 2. The experiments are now adequate. The document that reports them is not.
 
 ## Strengths
 
-- The two simulator design is the right experiment, and the paper reports the disagreement rather than the winner. `results.md` section 1: "The two runs disagree on the headline, and the disagreement is the main finding."
-- The paper argues against its own headline. `results.md` section 11 item 5: "The sampled policy is the baseline a fair claim about search must beat", followed by the admission that the protocol did not use it.
-- The 2D negative result is reported at full strength with a stated mechanism, not buried.
-- `math.md` labels which claims are bounds and which are heuristics. Section 10.3: "Equation (34) is a bound, valid under Assumption A. Equations (35) to (38) are a heuristic, for three reasons."
-- The design and the code agree on the search procedure. `swarm/search.py` implements roll, score, prune, expand in the order `math.md` section 9.1 specifies, and its `beta = 0` shortcut matches equation (30).
-- `docs/next_steps.md` names a falsifying experiment, a file, a flag, and a GPU cost for each of the six conclusions.
-- The code docstrings carry measured reasons for the non standard choices. `swarm/rlpd.py` `RLPDConfig` is the clearest single artifact in the repository.
+- The controls are adversarial, not confirmatory. Section 14.2 runs a random world model: it costs 11 to 13 points on mjlab and 4 on 2D. `runs/mjlab/results/day1_controls.json` group F3 carries every cell.
+- The paper retracts its own mechanism in public. Section 14.6 retrains 2D on a 60.7 percent buffer, raises the critic span ratio to 1.07, and finds search still loses 18 points. Conclusion 1 then states "The critic's action span is not the mediator".
+- Section 13.8 measures the reproducibility floor instead of hiding it: five repeats of one cell, a spread of 3.9 falling to 2.6 points, and the statement that the reported standard errors are the same size as that floor. `figures/paper/repeated_cell_floor.png` draws it and its ten points match the text.
+- Section 16 reports paired bootstrap intervals over 1,280 episodes per seed, and `scripts/seeds_summary.py` regenerates `results_tables_seeds.md` from the files.
+- `math.md` section 13 improves on the section 10 heuristic. Its arithmetic checks: the `d^{0.67}` growth, `sqrt(0.0013) = 0.037`, the regression slope of -3.27, and the per seed spreads.
+- The audit of section 15 matches `results/audit.json` and `runs/mjlab/results/audit.json` on every row.
+- `scripts/day1.sh` to `day4.sh` are readable, resumable, and each header says what it runs and why.
 
 ## Weaknesses
 
-Each item names the two locations that disagree.
+Each item names the two locations that disagree, or the missing item.
 
-### Numbers, constants, and procedures that two documents state differently
+### The document carries three vintages of the same measurement
 
-- **The critic target.** `methodology.md` section 5: "target is the **minimum** of 2 random heads". `design.md` section 6.4: "Target: the **mean** of two random heads, clamped to `[0, 1]`. RLPD uses the minimum." `math.md` equation (19): "RLPD takes the minimum of that pair, and this project does not." `swarm/rlpd.py`: `target_reduce: str = "mean"`. `concepts.md` section 18 repeats the wrong version: "sample a pair, take the min". Two of five documents describe a learner the code does not implement, and this is the change failure run 4 exists to justify.
-- **Communication radius.** `math.md` section 1 notation table: "$R_c$ ... comm radius | 5.0, 0.8, 0.4, **4.0** m". `design.md` section 3.5: "distance under `R_c = **6.0**` m". `swarm/env.py`: `comm_range: float = 6.0`.
-- **Sensing ranges.** `math.md`, prose under equation (2): "**2.0 m** for a pusher and a gripper and **8.0 m** for a scout". `design.md` section 3.5: "pusher `3.0`, gripper `3.0`, scout `15.0` m". `swarm/env.py`: `sense_range = (3.0, 3.0, 15.0)`.
-- **Goal sampling.** `math.md`, prose under equation (10): "Translation crosses the **2.5 m to 4.0 m** gap" and "design section 3.1 samples the goal orientation up to **90 degrees**". `design.md` section 3.1: "a goal at distance **1.5 to 3.0** m ... a random angle in `[-pi/4, pi/4]`". Equation (10)'s feasibility argument is computed on a task the project stopped using.
-- **Contact distance.** `math.md` equation (4) conditions on `||x_k - Pi(x_k)|| <= d_c` with `d_c = 0.25`. `design.md` section 3.2 states the same threshold as "robot center within `0.45` m". `swarm/env.py` uses `contact_dist: float = 0.45` against the center. Equation (4) is wrong by one robot radius.
-- **World model pretraining.** `design.md` section 6.5: "The model is pretrained on the offline buffer encoded by the trained encoders". `methodology.md` section 5: "There is no separate pretraining phase because the encoders are random at the start." `swarm/rlpd.py` trains the world model from the first update.
-- **World model file.** `design.md` heading 6.5 is "World model: `swarm/world_model.py`". No such file exists. `README.md` correctly puts it in `swarm/nets.py`.
-- **mjlab throughput at 256 envs.** `mjlab_port.md` section 3 gives two values, "2,900, 6,100, **11,850**" and "Throughput at 256 envs in the controls script | **14,400**". `results_tables_mjlab.md`: "Throughput: **9,064** env steps per second at 256 envs." `runs/mjlab/results/controls.json` records 9064.1. Two of the three have no source.
-- **The mjlab replication command.** `README.md`: `SWARM_SIM=mjlab RUN_DIR=$PWD/runs/mjlab bash scripts/run_all.sh`. `methodology.md` section 4: "`... bash scripts/run_all.sh **24000**` is the mjlab run." `scripts/run_all.sh`: `STEPS="${1:-12000}"`. `mjlab_port.md` section 4 repeats the README form. A reader who follows the README reproduces `belief_12k` at 28.9 percent, not the reported snapshot at 48.4.
-- **The pre-ease task.** `design.md` section 3.5: "The first draft used **2.0 m** sensing and **4.0 m** communication." `next_steps.md` F10: "the pre-ease ranges, sensing **1.5 m** and communication **3 m**". `math.md` implies a third version, 2.0 m for pushers and grippers and 8.0 m for the scout. The most consequential task change in the project has three incompatible records.
-- **The H1 decision rule.** `math.md` section 11.1: "Comparison | $\hat{d} = \hat{p}(D=2) - \hat{p}(D=0)$". `methodology.md` section 7: "H1 | success at lag 1: depth -1 against depth 2". Different quantities, opposite signs on 2D: +0.9 against -9.1 points. `results.md` uses the second and never mentions the first.
-- **The H2 and H3 confirmation rules.** `math.md` 11.2 requires "at the smallest $L$ the peak beats $D=0$ by more than $2\,\mathrm{se}$". Section 11.3 requires "$\beta^*(L_{\max}) < \beta^*(0)$". `methodology.md` section 7 states neither clause. The decision table depends on which document the reader opened.
-- **The unloading force.** `swarm/env_mjlab.py` docstring, bullet 3: "a **20 N** upward force at the payload center unloads the friction". Same docstring, bullet 1: "One latched gripper unloads it by **25 N**". Code: `lift_force: float = 25.0`. The docstring contradicts itself and never mentions the 80 percent clamp that `mjlab_port.md` section 5 and `results.md` 13.7 call a fix that changed published numbers.
-- **Arena escape.** `design.md` section 3.1: "may leave the arena by up to one **diameter**". `swarm/env.py` comment: "can pass the robot limit by up to one **radius**".
-- **The 4 robot team.** `results.md` section 9: "scores zero by construction". Section 13.7: "again unsolvable by construction". The mjlab transfer table on the same page reports 2.6 and 2.3 percent for `p2g1s1`.
-- **Significance of the mjlab margin.** `results.md` 13.3: the margin over the sampled policy "reaches 2 SE only at the deeper settings". `next_steps.md` Conclusion 1: "4.1 points above the sampled policy against a 2 SE of about 2.9". From 69.5 ± 1.8 and 65.4 ± 2.2, 2 SE of the difference is 5.7, not 2.9. One document calls the comparison significant that the other calls insignificant.
-- **Identical configurations, different numbers.** `math.md` 9.2: the `D = 0` and `beta = 0` columns are "the same critic argmax, computed by the same code on the same snapshot". `results_tables.md` lag 4: `D=0` is 51.6 ± 1.2, `beta=0.0` is 48.7 ± 2.6. mjlab lag 0: 60.7 ± 2.2 against 62.2 ± 2.0. `swarm/search.py` confirms one code path (`D = cfg.depth if cfg.beta > 0 else 0`).
-- **The same cell reported five ways.** Depth 2, lag 1, beta 0.5, 128 envs appears in `results_tables_mjlab.md` as 70.3 ± 2.3 (H2), 67.2 ± 0.9 (H3), 69.0 ± 1.7 (H4 independent), 67.2 ± 0.9 (dropout 0.0), and 66.4 ± 2.0 (transfer default). The mjlab no search cell at lag 1 appears as 44.0 ± 1.6, 43.5 ± 2.6, 45.3 ± 1.2, and 45.8 ± 1.4. The reported standard errors are smaller than the spread between files, and no document notes it.
+- **Sections 13.6 and 13.7 print the superseded run.** 13.4 states "the tables in 13.4 to 13.7 are the rerun". 13.6 gives H4 independent 69.0, leader 41.1, round robin 43.8 at lag 1; `runs/mjlab/results/h4.json` and `results_tables_mjlab.md` give 69.3, 39.8, 43.8. 13.7 gives dropout 0 at 45.3 and 67.2; `robust.json` gives 48.2 and 71.9. 13.7 gives transfer 45.8, 66.4, 2.6, 2.3, 90.4, 93.2, 96.6; `transfer.json` gives 46.1, 69.5, 2.3, 3.1, 93.0, 94.5, 93.8. Three whole tables in `results.md` disagree with the generated table document and with the files.
+- **13.7 and 13.8 give two values for one cell, eight lines apart.** 13.7 reports the dropout 0 search cell at 67.2 and the default transfer cell at 66.4. 13.8 lists 67.2 and 66.4 as "before" and 71.9 and 69.5 as "after", and the second pair is what the files hold.
+- **Section 16's table and its own paragraph disagree.** The table reads "+19.8 ± 8.9" at lag 0, "+14.0 ± 9.0" at lag 1, "+5.5 ± 5.9" at lag 4, matching `results_tables_seeds.md` and `runs/mjlab*/results/day1_controls_f1.json`. The paragraph three lines below reads "19.3 ± 6.3, 14.9 ± 7.4 and 9.3 ± 8.6". I traced the second set to `day1_controls.json`, which `scripts/day4.sh` superseded.
+- **Section 1 and section 11 propagate the superseded set.** Section 1 states "+19.3 ± 6.3 at lag 0, +14.9 ± 7.4 at lag 1 (section 16)". Conclusion 5 adds "5.9 ± 7.9 at lag 4" against the table's "+5.5 ± 5.9". `math.md` section 13 uses the same series.
+- **Section 16's seed claim uses the superseded file.** "depth 6 adds nothing over it (−1.4, −0.5 at lag 0; −1.4, −2.2 at lag 1)" comes from `day1_controls.json`. In `day1_controls_f1.json` the seed 1 differences are +0.6 and +1.4, so two of four numbers change sign.
+- **The two generated table documents disagree.** `results_tables_mjlab.md` "First day controls" F1 reads 60.5, 58.8, 64.3, 73.3 at lag 0. `results_tables_seeds.md` reads 59.6, 58.6, 64.8, 73.1 for the same arms of the same seed. The first reads `day1_controls.json`, the second `day1_controls_f1.json`. Neither says so.
+- **Conclusion 2 uses the first mjlab run.** It states the gain "falls from +35 points at lag 0 to +24 at lag 4", one imagined step "falls from +8.3 to +5.2", and the best discount falls "0.9 to 0.7 on mjlab". Section 13.4's rerun gives +36.2 to +17.4 and +10.2 to +5.2. Section 13.5's rerun gives best beta 1.0, 0.7, 0.9, 0.3 and the verdict "not resolved". Conclusion 2 asserts as a trend what 13.5 reports as unresolved.
 
-### Claims in `results.md` with no supporting number, table, or figure
+### The summary and the conclusions contradict the new sections
 
-- "the critic's values span 0.003 on a 0 to 1 scale" (section 5). This is the basis of conclusion 1. No table, figure, or result file reports it. `next_steps.md` F9 proposes the script that would produce it, which confirms it does not exist.
-- "It picks the mean action 1.4 percent of the time (chance is 11 percent) and it picks the candidate farthest from the policy mean (mean distance 0.34 against 0.28 for an average candidate)" (section 5). Three numbers, no source.
-- "its cost grows with the square of the team size (474 ms per step at 16 robots)" (section 9). The value is in `results/transfer.json`, but `scripts/summarize.py` drops `ms_per_step` from the transfer table, so no table or figure in the paper carries it.
-- "a random sample 60 percent, the mean 52 percent" (section 5). The ablations table on the same page gives 62.2 and 50.3. Section 3 gives a third pair, "60 percent against 47 percent".
-- "the argmax alone adds 16 points and the world model rollout adds another 8" (section 1). The attribution of 8 points to the model is never tested against a random model. `next_steps.md` F3 identifies this as untested.
-- "the no search baseline is flat across lags" (section 13.4). The mjlab H2 no search column is 37.2, 44.0, 45.6, 38.8, an 8.4 point spread against standard errors of 0.7 to 3.4.
-- "the forward correction keeps eight frame old messages usable" (section 9). No experiment turns the forward correction off. `next_steps.md` F5a proposes it.
-- "which carried over to mjlab without change" (section 11 item 6). Nothing records that the nine changes were re-tested on mjlab.
+- **Section 1 states the refuted mechanism as fact:** "the critic is nearly flat across the policy's own candidates (values span 0.003), so ranking candidates by Q amplifies noise and search loses nine points." Section 14.6: "the span is not what decides whether search helps." Conclusion 1: "The critic's action span is not the mediator (section 14.6)."
+- **Section 5 is never amended.** Its "Mechanism" paragraph and the line "Why the critic is flat in the action is the deeper finding" carry no pointer to 14.6 or 18, which eliminate that explanation.
+- **Section 1 overstates staleness:** "the gain of search falls with staleness in every run and seed." Section 19: "it falls with staleness in two of three seeds." Section 16: the sign agrees "in 2 of 3 at lags 4 and 8".
+- **Section 1 states the seed 0 split as general:** "the argmax alone adds 16 points and the world model rollout adds another 8." Section 16: "The mechanism claim of section 14 was a seed 0 property."
+- **Section 13.3 is never updated.** It says the margin over the sampled policy "does not reach 2 SE at any setting" and that resolving it "needs about 6 batches of 256 envs per cell". Section 14.1 runs exactly that and opens "This is the fair H1, and it resolves". 13.3 carries no pointer to 14.1.
+- **13.3 gives two values for one ratio in two sentences:** "1.28 on mjlab", then "most of the way to mjlab's 1.27". `results/critic_action_span.json` gives 1.2728.
 
-### Terms used before definition, and unexpanded acronyms
+### Numbers that no file supports
 
-- **QWM** appears in the first sentence of the proposal and throughout the README, design, methodology, and results. It is expanded only in the `concepts.md` glossary and the `math.md` reference list. The README, which the reader opens first, never expands it.
-- **RLPD** is never expanded into words in any document. The glossary gives a description, not the name.
-- **EXPO** appears once, in proposal section 4.4, with no expansion and no reference.
-- **Dec POMDP** is the heading of `math.md` section 2 and is never expanded. The glossary defines POMDP only.
-- **MSE**, **SE**, **utd**, and **UTD** appear before or without definition in `design.md` 6.6 and `results_tables.md`.
-- The team codes **p2g1s1, p4g4s1, p6g5s1, p8g7s1** appear in both table documents and in `results.md` sections 9 and 13.7 with no key. The mapping lives only in `scripts/common.py`.
-- **"the snapshot"** is used in `README.md` and `design.md` section 1 before section 6 or the glossary define it. **"full36k"** is a table row with one parenthetical gloss. **"copy baseline"** is defined in a parenthesis after its first use.
-- One quantity carries four names: staleness, lag, message lag (every figure axis), and L. One arm carries four names: no search, depth -1, the mean action, and the plain policy. The repository's own `CLAUDE.md` requires "one word for one meaning".
+- **`results.md` 16: "Best training evaluations: 48.4, 40.2, 36.7 percent."** `results_tables_seeds.md` gives 48.4, 30.9, 30.1, and the maximum `eval_success` in `runs/mjlab_seed1/results/train_belief.jsonl` is 0.309 and in `mjlab_seed2` 0.301.
+- **`results.md` 19: "mean policies are weak at 30 to 36 percent."** The no search cells of `runs/mjlab_seed1/results/h2.json` run 19.5 to 30.2 and of `mjlab_seed2` 21.1 to 26.6.
+- **`results.md` 9: "its cost grows with the square of the team size (474 ms per step at 16 robots)."** Unchanged. `scripts/summarize.py` still drops `ms_per_step` from the transfer table, so no table and no figure carries it.
+- **`results.md` 5: "a random sample 60 percent, the mean 52 percent."** The ablations table on the same page gives 62.2 and 50.3, section 3 gives 60 and 47, section 14.3 gives 61.7 and 50.5.
+- **`results.md` 5: "It picks the mean action 1.4 percent of the time."** `results/critic_action_span.json` gives 0.013433, which is 1.3. The 0.34 and 0.28 distances beside it now do check out against that file.
+- **`mjlab_port.md` 3: "Throughput at 256 envs in the controls script | 14,400."** `runs/mjlab/results/controls.json` gives 9,064.1. The same file also states 11,850 for 256 envs. Unchanged from round one.
+- **`mjlab_fidelity.md` 114: "The default team of six reaches 48 and 174 with every option on."** `_solver_capacity` in `swarm/env_mjlab.py` computes 84 and 282 for that team and those options, inside a bullet that warns the reader to check these numbers before scaling a team.
+- **`mjlab_fidelity.md`** states about 25 measured numbers and cites a file for none. Its source code claims all carry a file and a line, which makes the gap conspicuous.
+- **Conclusion 4: "the forward correction keeps eight frame old messages usable."** Section 14.4 turns the correction off at lags 0, 1, 2 and 4 only.
+- **Conclusion 6: "it carried over to mjlab without change."** Nothing records that the nine changes were re-tested on mjlab.
 
-### Can a reader reconstruct what was done, in what order
+### The methodology no longer describes what was run
 
-- Partly. `scripts/run_all.sh` is the real order and it is clear. But `methodology.md` section 4, which the document calls "the replication recipe", omits `scripts/ablations.py`, which produces the entire "Ablations on the snapshot" table, and omits the `full36k` run, which is a row of the training table. A reader who follows section 4 cannot produce two reported tables.
-- `math.md` names three commands that do not exist: `scripts/sweep.py --grid depth x lag` (11.2), `--grid beta x lag` (11.3), `scripts/sweep.py --leader` (11.4). The real flag is `--which`. `math.md` 11.1 and `design.md` section 9 both name an output file `results/h1.json`; the code writes `results/h1_depth-1.json`, `h1_depth0.json`, and `h1_depth2.json`.
-- **The twelve training runs cannot be reconstructed.** `results.md` section 2 opens with "**Twelve** training runs were needed to reach a stable learner" and then tabulates **nine**. Section 11 item 6 says "**nine** documented changes". `next_steps.md` heads a section "Conclusion 6: **nine** documented changes". Nothing identifies runs 10, 11, and 12. The count of twelve appears once and is never supported.
-- **The sequence of failures is presented as a result, and this is a strength.** The nine row table in section 2 gives symptom, cause, and change for each, and `math.md` sections 3 to 5 give the measured evidence. It is the best part of the submission. Its weakness is that no failure is dated or ordered against a task change, so a reader cannot tell whether run 5 (the task ease) came before or after the critic changes. That matters, because the ease could have caused the flat critic that conclusion 1 blames on the physics, as `next_steps.md` F10 concedes.
-- **The two task changes are recorded but not reconciled.** The eased 2D task appears in `design.md` 3.1 and 3.5, `results.md` section 2 run 5, and `results.md` section 12. The mjlab speed appears in `methodology.md` section 1, `mjlab_port.md` section 2, and `scripts/common.py`. Neither appears in `math.md`, which still computes on the pre-ease task, and neither has a control. `next_steps.md` F10 states the risk plainly: "Either change can set the sign of H1."
+- `methodology.md` section 4 is "the replication recipe" and lists nine steps of `run_all.sh`. `scripts/day1.sh` to `day4.sh` produce sections 14 to 19, a third of the results, and the methodology names none of them. Nor does it name `ablations.py`, `day1_controls.py`, `critic_span.py`, `lag_curve.py`, `seeds_summary.py`, `plot_paper.py`, or the `full36k` run, all of which produce published tables.
+- Section 6 fixes evaluation at 3 batches. Sections 14.1, 16 and 17 use 5 batches of 256 envs, a setting the protocol never states.
+- Section 7 decides H1 on "depth -1 against depth 2". Section 14.1 calls the comparison against the sampled policy "the fair H1" and conclusion 5 makes it the headline. The rule that decides the headline is in no decision table.
+- Section 8 opens "One training seed". Sections 16 and 19 report three seeds per simulator.
+- Section 2 points at "results.md section 13.9" for the repeated cells. That is section 13.8.
+- `scripts/day3.sh` runs the momentum variant with `SWARM_SIM=2d_momentum`. `results.md` 18 names `EnvConfig.dynamics = "momentum"`. Two switches for one experiment.
+- `scripts/day1.sh` collects the demonstration control at `NOISE:-0.5` and its header says "about 65 percent". `results.md` 14.6 says noise 0.6 and `runs/demo65/results/offline.json` records 0.6 and 60.7 percent. The committed script does not reproduce the published control.
+- `results.md` 19 labels its whole table "per batch seeding". `results/h2.json` is the original 2D sweep and `scripts/day2.sh` reran only `runs/mjlab`, so the 2D seed 0 row predates the fix.
+
+### Can a reader reconstruct the order of events
+
+- **The twelve training runs: fixed.** Section 2 reads "Twelve training runs were started before the snapshot: nine changed the learner and are tabulated below, and three were restarts for infrastructure". This answers my round one question 5.
+- **The later runs: not reconstructable.** The repository holds eight more trained agents (`demo65`, `2d_momentum`, `2d_seed1`, `2d_seed2`, `mjlab_seed1`, `mjlab_seed2`, `mjlab_collect`, `full36k`). No document gives a total, and only the two mjlab seeds are tied to the script that trained them.
+- **The two task changes: unchanged.** `design.md` 3.5 says the first draft used "2.0 m sensing and 4.0 m communication"; `next_steps.md` F10 says "sensing 1.5 m and communication 3 m". Neither change has a control, and F10 still warns "Either change can set the sign of H1."
+- **The review: partly placed.** Section 14 says the controls ran "after the review" and `meta_review.md` lists what the review asked for. Nothing says which published number predates the review, which matters because 13.6 and 13.7 are pre-review files printed beside post-review text.
+- **The day programs: two of four are invisible.** Section 14 names `day1.sh`, section 16 names `day2.sh`. Sections 17, 18 and 19 name run directories and no script, so `day3.sh` appears in no document. `day4.sh` appears in no document, although section 16's table and every bootstrap interval rest on its output.
 
 ### Figures
 
-- Every figure is legible, labeled, and titled, and every 2D figure is referenced by name in the table in `results.md` section 10. That is the good news.
-- **No mjlab figure is referenced individually.** Section 13 says only "The figures are in `runs/mjlab/figures/`". The mjlab run is half the paper and carries the confirming result, and it has no figure table.
-- **`figures/learning_curves.png` does not show the `full` run.** The orange series is in both legends and invisible in both panels, hidden under the green `full36k` curve. The figure is cited to support "The full state baseline learns more slowly than the belief agent at 12,000 steps", which a reader cannot see in it.
-- **`figures/h2_best_depth.png` contradicts the text that cites it.** It shows a clean staircase, 4, 2, 0, 0, with no error bars and no no search reference. The text on the same page says "Every search cell is below the no search cell of its row, so the 'best depth' is the least harmful depth." A reader who sees only the headline figure draws the opposite conclusion. The three cells that set the lag 0 bar (37.2, 34.6, 33.6) are inside 2 SE of each other.
-- **There is no H1 figure.** `scripts/plot.py` has no `fig_h1`. H1 is the hypothesis whose sign differs between the simulators, which is the stated main finding.
-- **There is no figure that places the two simulators side by side.** The main finding has no picture.
-- **The figure a reader needs most and does not have:** the distribution of critic values across the nine root candidates on both snapshots. Conclusion 1 rests entirely on "values span 0.003" and no figure shows it. Two more are missing: search cost against team size (the 474 ms claim), and the H4 panel with the no search line on it, since section 8 argues "Leader mode lands exactly on the no search number".
-- `figures/transfer_team.png` is titled "Transfer to a new team size" while the table it comes from is titled "Transfer: team composition". The figure discards the composition, joins an unsolvable point at K = 4 to the rest with a line, and plots the training team K = 6 as a transfer point.
-- Cost numbers mix batch sizes without normalizing. The H1 table gives 13.5 ms per step at depth -1 with 256 envs; the H2 cost line gives 25 ms at depth -1 with 128 envs. Halving the environments nearly doubles the reported cost of the cheapest arm, and no document addresses it.
+- **Three of the five paper figures are orphans.** `fair_h1_by_seed.png`, `critic_span.png` and `repeated_cell_floor.png` are referenced in no document. Only `gain_vs_staleness.png` and `gain_over_no_search_by_seed.png` are cited, in sections 16 and 19.
+- **`fair_h1_by_seed.png` reads the superseded file.** `scripts/plot_paper.py` `load_arm_points` opens `day1_controls.json`, never `day1_controls_f1.json`. Its lag 0 annotations read +0.128, +0.253, +0.198 against `results_tables_seeds.md`'s +13.5, +30.0, +15.8.
+- **`fair_h1_by_seed.png` is hard to read.** The x tick labels of the top row collide with the subplot titles of the bottom row, so "lag 4" prints over "search in collection". The lag 2 and lag 8 panels leave a labelled tick with no bars, which reads as a zero.
+- **`gain_vs_staleness.png` does not draw what section 16 says.** Section 16: "draws it per seed with the mean band". The black mean averages four runs, including `search in collection`, so its lag 0 mean is about 0.23 against the section's +19.3 for three seeds.
+- **Every paper figure labels the y axis in fractions.** Every table reports points. The reader converts by hand five times.
+- **`gain_over_no_search_by_seed.png` names seed 0 two ways.** Its 2D legend reads `2d_seed1`, `2d_seed2`, `results`; its mjlab legend reads `mjlab`, `mjlab_seed1`, `mjlab_seed2`. Nothing says `results` and `mjlab` are both seed 0.
+- **No mjlab figure is referenced individually.** Section 13 still says only "The figures are in `runs/mjlab/figures/`", and section 10's figure table covers the 2D run only.
+- **`figures/h2_best_depth.png` still contradicts its text.** It now annotates each bar's success value, which helps, but it still shows a clean staircase with no no search reference and no error bars, while the text says "Every search cell is below the no search cell of its row".
+- **`figures/learning_curves.png` still hides the `full` run.** The orange series is in both legends and invisible in both panels, under the green `full36k`. Section 3 cites it for "The full state baseline learns more slowly than the belief agent".
+- **`figures/transfer_team.png` is unchanged**, still titled "Transfer to a new team size" against a table titled "Transfer: team composition", still joining the unsolvable K = 4 point to the rest with a line.
+- **Cost still mixes batch sizes.** Section 5 gives 13.5 ms per step at depth -1 with 256 envs; section 6 gives 25 ms at depth -1 with 128 envs.
 
 ### Mathematics against the final code
 
-I checked equations (2), (4), (5), (6), (10), (12), (12b), (13), (15), (19), (20), (21), (22), (22b), (24), (25), (26), (27), (28), (29), (30), (31), and (32) against `swarm/env.py`, `swarm/nets.py`, `swarm/rlpd.py`, `swarm/belief.py`, and `swarm/search.py`.
+Four of my six items are fixed. Equations (2) and (4) match `swarm/env.py`, the notation table gives `R_c = 6.0`, and equation (19) matches `target_reduce = "mean"`. The rest stand.
 
-- Correct against the code: (5), (6), (12), (12b), (13), (20), (21), (22), (22b), (24), (25), (28), (29), (30), (31), (32). Equation (19) is correct and contradicts `methodology.md`, not the code.
-- **Equation (2) describes an earlier version.** Sensing 2.0 and 8.0, communication 4.0. The code has 3.0, 15.0, and 6.0.
-- **Equation (4) describes an earlier version.** `d_c = 0.25` to the boundary; the code uses 0.45 from the center.
-- **Equation (10) describes an earlier version.** It computes feasibility over a 2.5 m to 4.0 m goal gap and a 90 degree rotation, so its conclusion that "the worst case really occurs" no longer follows.
-- **Equation (27) does not match `swarm/nets.py`.** It states `b_i = att_i + MLP(att_i)`. `Fusion.forward` computes `norm2(norm1(own + out(attn)) + ff(...))`: a residual on the own encoding and two LayerNorms the equation omits. The permutation invariance proof survives, but its last line, "equation (27) makes $b_i$ a function of $\mathrm{att}_i$ alone", is false of the code.
-- **Equation (15) is one loss; the code takes two optimizer steps.** `swarm/rlpd.py` steps `opt_actor` once inside the critic backward (the cloning term) and again for the SAC term.
-- The section 1 notation table lists `E` as "512 train, 256 evaluate". `methodology.md` uses 256 for training and 128 for the sweeps. `math.md` section 11 asserts "The design's protocol fixes evaluation at 256 environments", which 68 of the 76 reported cells do not satisfy.
+- **Equation (27) is unchanged.** It states `b_i = att_i + MLP(att_i)`. `Fusion.forward` computes `norm2(norm1(own + out(attn)) + ff(...))`. The line "equation (27) makes $b_i$ a function of $\mathrm{att}_i$ alone" is still false of the code.
+- **Equation (15) is still one loss.** `swarm/rlpd.py` calls `opt_actor.step()` twice per update. `math.md` never says so.
+- **Equation (10)'s feasibility argument still uses the abandoned task.** The rotation range is corrected, but "Translation crosses the 2.5 m to 4.0 m gap in 24 to 39 of the 150 steps" uses the old goal range, and "about 157 steps for that angle, which exceeds the 150 step episode" uses the old 90 degree rotation. At 45 degrees it is about 79 steps, so the conclusion reverses.
+- **The 256 environment assertion survives.** `math.md` 11: "The design's protocol fixes evaluation at 256 environments." `scripts/sweep.py` sets `p.set_defaults(envs=128)` and every stored sweep row carries `envs: 128`.
+- **Section 13's subsections are numbered 10.1 to 10.7.** Four labels collide with the real subsections of section 10, and section 13 then refers to "section 10.6" meaning its own.
+- **Section 13 contradicts section 10 without amending it.** Section 10.4 states "$\delta_0 = 0$"; section 13 states "$\delta^{(0)} = \Delta(L)$ and not zero. The earlier draft asserted $\delta_0 = 0$". Section 10.4 is not marked superseded. Section 13 also disowns the argmax rules that 11.2 and 11.3 still use to decide H2 and H3.
+- **Section 12 says "No item remains open."** Section 13 says "This is the one instrumentation the study should add."
+- **The three non existent `sweep.py` commands survive** (`--grid depth x lag`, `--grid beta x lag`, `--leader`). The real flag is `--which`. **`results/h1.json`** survives in `math.md` 11.1 and `design.md` 9; the code writes `h1_depth-1.json`, `h1_depth0.json` and `h1_depth2.json`.
 
-### The writing against its own stated style
+### Documents and code that still disagree
 
-`CLAUDE.md` requires the active voice, the present tense, one word per meaning, no em dashes, and no emojis. The last two are honored everywhere; I found no em dash and no emoji. The lapses:
+- **World model pretraining.** `design.md` 6.5: "The model is pretrained on the offline buffer encoded by the trained encoders". `methodology.md` 5: "There is no separate pretraining phase."
+- **`swarm/world_model.py`.** `design.md` heading 6.5 names it; the file does not exist. `README.md` correctly puts the model in `swarm/nets.py`.
+- **Arena escape.** `design.md` 3.1: "up to one diameter". `swarm/env.py`: "up to one radius".
+- **The unloading force.** `swarm/env_mjlab.py` bullet 1 says 25 N, bullet 3 says 20 N, the code says `lift_force = 25.0`, and the docstring still never mentions the 80 percent clamp that `results.md` 13.7 calls a fix that changed published numbers.
+- **The 4 robot team.** `results.md` 9: "scores zero by construction". 13.7: "again unsolvable by construction", beside a table giving 2.6 and 2.3 percent.
+- **`swarm/rlpd.py` line 119: "Target uses two random heads and the mean action."** The default `target_policy = "data"` takes the next recorded action. The same comment block says "The bootstrap uses the mean action" and, four lines later, the opposite.
+- **`swarm/belief.py`: "Every entry is at least `AGE_MAX` recent."** The code floors the stamp, so an entry is at most `AGE_MAX` steps old.
+- **`design.md` section 8** still reads "mjlab is future work". mjlab is half the paper.
 
-- One word for one meaning fails on the two clusters above, and on snapshot against checkpoint against best checkpoint.
-- Sentence length: `math.md` section 3, under equation (12), runs one sentence of 71 words from "A bootstrap on the policy mean then held" to "returned 0.29 one step from success". Section 4, under equation (19), runs a 78 word sentence. The stated limit is 25 words.
-- Passive voice: `methodology.md` section 6, "The mean action is used unless search is on."
-- A comment that repeats the code: `swarm/rlpd.py`, "# Critic. Target uses two random heads and the mean action."
-- A docstring that is not true in any reading: `swarm/belief.py`, `MessageTable.update`, "Every entry is at least `AGE_MAX` recent." The intent is "at most AGE_MAX steps old".
-- Structure: `results.md` section 1 says "sections 2 to 12 cover the 2D run, section 13 the mjlab run". The document prints 1 to 10, then 13 with 13.1 to 13.8, then 11 and 12. Sections 11 and 12 are the conclusions and the limitations and they cover both runs, so both the sentence and the order are wrong.
-- `results.md` section 1 promises "The equations referenced as (n) are in `math.md`." No equation reference appears anywhere in `results.md`.
-- `README.md` repeats one sentence twice: "Results land in `results/`, checkpoints in `checkpoints/`."
+### Terms, and the writing against its own style
 
-### The proposal's schedule and deliverables against what was delivered
+- **Em dashes and emojis: none, anywhere.** Both rules hold across all thirteen documents and all thirteen modules.
+- **RLPD is expanded once**, in `concepts.md`. **QWM is expanded** in `concepts.md` and `related_work.md`, and `README.md` no longer uses it. **Dec-POMDP is expanded nowhere.**
+- **Calendar language survives in two documents.** `concepts.md` carries ten occurrences, including "Snapshot | The saved weights at the end of week 5". `math.md` carries three, including "every cell of every sweep loads the identical week 5 snapshot". `swarm/compute.py` says "A nine day job shares this machine." `README.md` says "The work was done in one session." `design.md` is now clean, which shows the edit is cheap.
+- **Sentence length got worse.** `math.md` section 3 now runs a 95 word sentence, up from 71. `results.md` section 15 runs 82 words, conclusion 5 runs 74, section 13.4 runs 71, and `next_steps.md` line 10 runs 77. The stated limit is 25.
+- **The team codes still have no key.** `p2g1s1`, `p4g4s1`, `p6g5s1`, `p8g7s1` appear in both table documents and in `results.md` 9 and 13.7. The mapping lives only in `scripts/common.py` and one parenthesis.
+- **One quantity still carries four names** (staleness, lag, message lag, L) and one arm four (no search, depth -1, the mean action, the plain policy). `CLAUDE.md` requires one word for one meaning.
+- **The section order is further from the roadmap.** Section 1 says "sections 2 to 12 cover the 2D run, section 13 the mjlab run". The document prints 1 to 10, then 13, then 14 to 19, then 11 and 12. Six new sections are absent from the roadmap and four cover both simulators.
+- **`results.md` still promises "The equations referenced as (n) are in `math.md`."** No equation reference appears anywhere in it.
+- **`README.md` still repeats one sentence twice**: "Results land in `results/`, checkpoints in `checkpoints/`." The second copy also drops the mjlab run directory.
+- **`methodology.md` 6 keeps the passive**: "The mean action is used unless search is on."
+- **`related_work.md` leaves a hole.** The "Cooperative transport" section cites nothing and the reference list holds no transport, pushing, or caging paper. The task of the study is cooperative transport.
 
-No document reconciles them. `design.md` section 8 lists four differences from the proposal and none is a dropped deliverable. `results.md` section 12 lists five limitations and none is a dropped deliverable. These proposal items appear nowhere else in the repository:
+### The proposal's deliverables
 
-- Section 5 baseline "Search with V instead of Q". The proposal calls it "the direct replication" and says in section 7 that it "survives longest" in the cut order. It was not run and is never mentioned again.
-- Section 5 baseline "Independent per robot world models, no messages". The messages masked ablation is a different experiment.
-- Section 6, "Belief divergence between robots over time". Never measured.
-- Section 6, "Train with 8 robots, evaluate at 4, 12, 16, 32". The delivered run trains on 6 and evaluates at 4, 6, 9, 12, 16. There is no 32 robot cell.
-- Section 6, "Train on 4 pushers plus 4 grippers, evaluate on unseen type ratios". The training team is 3 pushers, 2 grippers, 1 scout.
-
-The eight week schedule is unreconciled and has left artifacts. `math.md` section 11: "every cell of every sweep loads the identical **week 5** snapshot". `concepts.md` section 18: "Snapshot | The saved weights at the end of **week 5**". `design.md` section 6.5: the model "is pretrained in **week 4**". `math.md` section 2.3: "the **week 1** negative control". `README.md` says the opposite: "The work was done in one session". A reader meets a calendar that did not happen in four documents.
+Unchanged. Four proposal items appear nowhere outside the proposal: "Search with V instead of Q", "Independent per robot world models, no messages", "Belief divergence between robots over time", and the 32 robot transfer point. `design.md` 8 lists four differences from the proposal and none is a dropped deliverable; `results.md` 12 lists five limitations and none is a dropped deliverable.
 
 ## Questions for the authors
 
-1. Is the critic target the mean or the minimum of two random heads? `methodology.md` and `concepts.md` say minimum; `design.md`, `math.md` equation (19), and `swarm/rlpd.py` say mean. Which two documents will you correct?
-2. `math.md` 9.2 calls the `D = 0` and `beta = 0` cells "the same critic argmax, computed by the same code on the same snapshot". Why do they differ by 2.9 points at lag 4 on 2D? Is the cause that `run_all.sh` runs `h2` and `h3` as separate processes, so the candidate sampling RNG sits at a different position in each?
-3. On mjlab the same no search cell at lag 1 appears as 43.5, 44.0, 45.3, and 45.8 across four files, with reported standard errors of 0.7 to 2.6. The 2D no search cells match exactly. Does mjlab reproduce under a fixed seed? The `belief` and `belief_12k` mjlab curves also diverge from about 0.7 million transitions at the same seed 0.
-4. Which is the H1 rule: depth 2 against depth 0 (`math.md` 11.1) or depth 2 against depth -1 (`methodology.md` section 7)? On 2D they give opposite signs.
-5. How many training runs were there? `results.md` section 2 says twelve and tabulates nine. What were runs 10, 11, and 12?
-6. What were the pre-ease sensing and communication ranges: 2.0 and 4.0 metres (`design.md` 3.5) or 1.5 and 3.0 (`next_steps.md` F10)?
-7. What is the measured mjlab throughput at 256 envs: 9,064, 11,850, or 14,400?
-8. Is the depth 2 margin over the sampled policy on mjlab significant? `results.md` 13.3 says no; `next_steps.md` says yes, using "a 2 SE of about 2.9" where the correct value is 5.7.
-9. `results.md` section 5 reports three numbers supporting conclusion 1 that no result file carries: the 0.003 span, the 1.4 percent selection rate, and the 0.34 against 0.28 distances. Where do they come from?
-10. Will you correct `math.md` equations (2), (4), and (10), which describe the pre-ease task, and equation (27), which omits the residual and the two LayerNorms that `swarm/nets.py` applies?
-11. `README.md` and `mjlab_port.md` give the mjlab command without `24000`, so the default 12,000 applies. Which command produced the reported mjlab snapshot?
-12. Why is depth -1 measured at 13.5 ms per step with 256 envs and 25 ms with 128 envs? Will you report cost per environment per decision?
-13. Four proposal deliverables were not delivered and are not listed as cut: the V against Q baseline, the independent world model baseline, belief divergence, and the 32 robot transfer point. Were they cut, and under which rule of the proposal's cut order?
+1. Which run do sections 13.6 and 13.7 report? The tables match the `_preseed` files and 13.4 says they are the rerun.
+2. Which numbers does section 16 stand behind, the table's +19.8 ± 8.9 or the paragraph's +19.3 ± 6.3? Section 1, conclusions 1 and 5, `math.md` 13, and `fair_h1_by_seed.png` all use the second.
+3. What are the best training evaluations of mjlab seeds 1 and 2? Section 16 says 40.2 and 36.7; `results_tables_seeds.md` and the two `train_belief.jsonl` files say 30.9 and 30.1.
+4. Will section 1 and section 5 be rewritten to state the mechanism that 14.6 and 18 leave standing?
+5. Will `methodology.md` gain a protocol row for the fair H1 arm, the 256 by 5 setting, the three seeds, and `day1.sh` to `day4.sh`?
+6. What is the mjlab throughput at 256 envs: 9,064, 11,850, or 14,400?
+7. What are the pre-ease 2D ranges: 2.0 m and 4.0 m, or 1.5 m and 3 m?
+8. `scripts/day1.sh` defaults to `NOISE=0.5`; the published control used 0.6. Which will you commit?
+9. Should `math.md` section 13's subsections be 13.1 to 13.7? And does section 12's "No item remains open" still stand?
+10. Will you correct equations (27) and (15) and the pre-ease arithmetic under equation (10)?
+11. Where do `mjlab_fidelity.md`'s 25 measured numbers come from, and does `_solver_capacity` give 48 and 174 or 84 and 282?
 
 ## Limitations
 
-The authors state their limitations well in `results.md` section 12 and extend them in `next_steps.md`: one training seed per configuration, a critic that values a behavior mixture rather than the learned policy, two deviations from RLPD needed to train at all, and a task eased once. They volunteer the most damaging one themselves, that the sampled policy is the baseline a fair claim must beat and the protocol did not use it. What the section does not cover is the class of problem this review found: the documents do not agree with each other or with the code, so a reader cannot always tell which system produced the numbers. That is a limitation of the write up, not of the science, and it is the cheaper of the two to fix.
+Section 12 is now honest about the seed structure: "Sections 3 to 10 and 13 report seed 0 of each simulator. Sections 16 and 19 report three seeds per simulator for the fair H1 arms and the H2 gain; the remaining sweeps (H3, H4, robustness, transfer) are one seed each." That disclosure was not there in round one. Two gaps remain. The section does not say that several published tables come from superseded runs, which is the limitation this review found. And the sentence "Its transfer and ablation cells use 128 envs" has no antecedent for "Its".
 
 ## Ethics
 
-No ethical concern. The work is simulation only, uses no human or animal data, and releases code and locked dependencies.
+No ethical concern. The work is simulation only, uses no human or animal data, and releases code, locked dependencies, and every result file that the tables cite.
 
 ## Scores
 
-- **Soundness: 2** (fair). The experimental design is sound and the paired sweep structure is right. Two problems hold the score down: identical configurations produce different numbers with no explanation, and the reported standard errors are smaller than the spread of the same cell across files, so the argmax readings that decide H2 and H3 are not safe.
-- **Presentation: 2** (fair). Individually the documents are clear and well written. Collectively they contradict each other on constants, on decision rules, and on the critic target, the headline figure contradicts its own caption, and the results document's section order contradicts its own roadmap.
-- **Contribution: 3** (good). The question is well posed, the two simulator inversion is a real and useful finding, and the documented sequence of nine learner failures is a contribution in itself.
-- **Overall: 4** (borderline reject). A solid study whose write up is not yet trustworthy enough to build on. The technical core looks right where I could check it against the code; the documentation around it does not yet describe that core.
-- **Confidence: 4.** I read every document, viewed every figure, and checked the mathematics and the documented constants against `swarm/env.py`, `swarm/nets.py`, `swarm/rlpd.py`, `swarm/belief.py`, `swarm/search.py`, and the result JSON files. I did not run the code and did not re-derive the learning results.
+- **Soundness: 3** (good), up from 2. The fair baseline, three seeds per simulator, the paired bootstrap, the random world model control, the demonstration quality control, the momentum variant, and the audit answer the design questions of round one. The published number for a cell is still not always the number in the file, which is a reporting fault rather than a design fault, and it is why this is 3 and not 4.
+- **Presentation: 2** (fair), unchanged. The six new sections are individually clear and individually sourced. Collectively they left the summary, the conclusions, three mjlab tables, and one paper figure on superseded numbers, and the roadmap no longer describes the document.
+- **Contribution: 3** (good), unchanged. The two simulator inversion is stronger than in round one: the study eliminated three explanations for it (demonstration quality, critic span, momentum) and says plainly that the cause is not settled. The nine documented learner failures remain a contribution on their own.
+- **Overall: 5** (borderline accept). The experiments now support the claims. The document does not yet report the experiments it ran.
+- **Confidence: 4.** I read every document in its current state, viewed all five paper figures and the two I criticised in round one, and checked every number in sections 13 to 19 against `results/`, `runs/*/results/` and `scripts/`. I did not run the code and did not re-derive the learning results.
 
-## What would change my score
+## What changed my score, and what would change it again
 
-Three changes would move me to 6, and a fourth would move me to 7.
+Round one gave 4 because the write up was not trustworthy enough to build on. Three things moved me to 5. First, the controls arrived and they attack the paper's own explanation: sections 14.2, 14.3, 14.6 and 18 each try to kill the stated mechanism and three succeed. A study that eliminates its own mechanism and says so is doing the work. Second, the seed structure is real, with paired bootstrap intervals over 1,280 episodes per seed and a table document that regenerates from the files. Third, the measurement I asked for, the run to run spread of a fixed cell, exists as section 13.8 and as a figure, and the paper states that its standard errors are the same size as that floor.
 
-First, make `design.md` the single source of truth it claims to be and bring every other document to it. Correct the critic target in `methodology.md` and `concepts.md`. Correct equations (2), (4), (10), and (27) and the communication radius in `math.md`. Delete the week language from `math.md`, `concepts.md`, and `design.md`. Fix the `swarm/world_model.py` path, the three non existent `sweep.py` commands, the mjlab throughput in `mjlab_port.md`, and the `env_mjlab.py` docstring. None of this needs a GPU.
+What holds it at 5 is one mechanical fault with many faces. The study ran each measurement two or three times and the document never adopted one vintage. A 6 needs four edits and no GPU: regenerate sections 13.6 and 13.7 from `h4.json`, `robust.json` and `transfer.json`, or say in one sentence that they are the first run and why; make section 16's paragraph agree with section 16's table; correct the three mjlab seed training evaluations; and rewrite section 1, section 5, and conclusions 1, 2 and 5 from the sections they summarise rather than from the drafts that preceded them. A 7 needs one more: give `methodology.md` a protocol entry for every script that produced a published table, including `day1.sh` to `day4.sh` and the 256 by 5 setting, and put the fair H1 rule in the decision table, since it is the rule that decides the headline.
 
-Second, explain the cell to cell disagreement. Either re-seed the RNG per cell and rerun the sweeps so `D = 0` and `beta = 0` agree exactly, or state in `methodology.md` that they do not and report the measured run to run standard deviation of a fixed cell. The current standard errors understate the real variation on mjlab by about a factor of three.
-
-Third, produce the missing evidence for conclusion 1. One figure showing the distribution of critic values across the nine root candidates on both snapshots would turn the central mechanism claim from an assertion into a result. `next_steps.md` F9 already scopes it at nine GPU minutes.
-
-Fourth, and this earns a 7: run F3, the randomly initialized world model at depth 2 and depth 6 on both simulators, at five GPU minutes. It is the only control that separates "the world model rollout accounts for 8 of them" from "any perturbation of the root ranking accounts for 8 of them". Without it, the positive mjlab result is a claim about re ranking and not about a world model, and the title promises a world model.
-
-I would also ask for one H1 figure, one figure placing the two simulators side by side, a no search line on the H2 best depth figure, and a reconciliation table mapping the proposal's five baselines and six experiment groups onto what was delivered, with the cut reason for each. Those are editing tasks, not experiments.
+I would also ask for five editing tasks no reader should have to do. Point `scripts/plot_paper.py` at `day1_controls_f1.json`. Reference the three orphan paper figures from the text and plot them in points, not fractions. Put the no search line on `figures/h2_best_depth.png`. Give the team codes a key. Delete the week language from `concepts.md` and `math.md`, as `design.md` already shows can be done.

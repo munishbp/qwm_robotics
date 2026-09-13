@@ -109,7 +109,10 @@ def add_arm_point(points: dict, row: dict) -> None:
 def load_arm_points(root: str, run_dir: str) -> dict:
     """Return {(arm, lag): (success, error)} for the H1 arms of one run directory."""
     points: dict = {}
-    for row in load_rows(os.path.join(root, run_dir, "results", "day1_controls.json")) or []:
+    # The rerun with per episode outcomes replaces the first file where it exists.
+    f1 = os.path.join(root, run_dir, "results", "day1_controls_f1.json")
+    first = f1 if os.path.exists(f1) else os.path.join(root, run_dir, "results", "day1_controls.json")
+    for row in load_rows(first) or []:
         if row.get("group") == "F1":
             add_arm_point(points, row)
     for row in load_rows(os.path.join(root, run_dir, "results", "lag_curve.json")) or []:
