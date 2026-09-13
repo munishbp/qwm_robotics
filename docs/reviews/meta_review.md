@@ -1,86 +1,59 @@
-# Meta review
+# Meta review, second round
 
-Three reviewers read the repository as a NeurIPS submission, each told to refute. Their reviews
-are in this directory. This meta review records the scores, the points all three agree on, what
-the authors changed in response (commit `a199287` and the one after it), and what remains open.
+Three reviewers read the repository again after the first round's fixes and the three day
+programs (`results.md` sections 14 to 19). Each began from its first round review and checked
+every objection. The first round text is in git history (commit `a7214f9` and before). The
+project is for learning, not publication; the NeurIPS format is used because it is a hard,
+familiar standard, not because a submission is intended.
 
 ## Scores
 
-| Reviewer | Lens | Soundness | Presentation | Contribution | Overall | Confidence |
-|---|---|---|---|---|---|---|
-| 1 | Methods and correctness | 2 | 3 | 2 | 4, borderline reject | 4 |
-| 2 | Significance and positioning | 2 | 2 | 2 | 3, reject | 4 |
-| 3 | Clarity and consistency | 2 | 2 | 3 | 4, borderline reject | 4 |
+| Reviewer | Lens | Soundness | Presentation | Contribution | Overall | Confidence | Round one overall |
+|---|---|---|---|---|---|---|---|
+| 1 | Methods and correctness | 3 | 2 | 3 | 5, borderline accept | 4 | 4 |
+| 2 | Significance and positioning | 3 | 3 | 3 | 5, borderline accept | 4 | 3 |
+| 3 | Clarity and consistency | 3 | 2 | 3 | 5, borderline | 4 | 4 |
 
-Consensus: the work is a complete, honest, replicable study with a real engineering
-contribution and a clear negative and positive result pair, but it is not a NeurIPS paper in its
-present form. The main claims rest on one training seed per simulator, the headline margin over
-the fair baseline is inside the noise, the mechanism is measured on one arm, and the writing
-contradicted itself in several places.
+All three moved up one to two points. The consensus: the headline is now supported at the level
+a paper needs (three seeds, paired episodes, intervals), the negative controls are real and
+honest, and the write up still contradicts itself in places because it grew section by section.
 
-## Points all three reviewers made
+## What the second round settled
 
-1. **The headline does not beat the sampled policy at 2 SE.** The mjlab search gains 24.5 points
-   over the deterministic mean action but 4 to 7 points over the sampled policy, and once both
-   standard errors are combined no cell clears 2 SE. The results document had claimed one did.
-   Fixed: `results.md` 13.3 and conclusion 5 now state the margin is unresolved and cost the
-   experiment that would resolve it.
-2. **One training seed per simulator.** Every cross simulator claim is one snapshot against one
-   snapshot. Not fixed; costed in `next_steps.md` (three seeds per simulator, 202 GPU minutes).
-3. **The mechanism was asserted, not measured, on mjlab.** The critic span of 0.003 was a 2D
-   number that lived in no results file. Fixed: `results/critic_action_span.json` now holds the
-   span, the ensemble spread, their ratio (0.66 on 2D, 1.27 on mjlab), the argmax selection rate,
-   and the candidate distances for both snapshots, and `results.md` 13.3 reports them with the
-   caveat that both spans are small.
-4. **Repeated cells differ by up to four points.** The same setting appears in five sweep groups
-   with five numbers because the torch RNG was seeded once per script. Fixed in the code
-   (`swarm/evaluate.py` seeds per batch) and reported as the empirical noise in `results.md` 13.8.
-   The sweeps were not rerun; a rerun costs about 2.5 hours per simulator.
-5. **No related work.** Fixed: `docs/related_work.md` places each claim against QWM, QT-Opt,
-   Hamrick et al., RLPD, REDQ, TD3+BC, CQL and IQL, CommNet and TarMAC, I-POMDPs and Self Other
-   Modeling, and states plainly what is new.
-6. **Document contradictions.** The critic target was described as the minimum in two documents
-   and the mean in the code; the mathematics carried the constants of the abandoned first task;
-   the run count was twelve in one place and nine in another; the README command did not reproduce
-   the mjlab snapshot; the mathematics defined H1 against depth 0 while the methodology used depth
-   -1. All fixed in the documents.
+- **The fair H1 holds.** Reviewer 1 recomputed all fifteen paired bootstrap intervals from the
+  per episode files and they match. Reviewer 2 accepts that the search clears the sampled policy
+  and a random candidate on three seeds at fresh to one frame old information.
+- **The mechanism is open, and now the text says so.** Three explanations were measured and
+  eliminated; the remaining candidates (the contact model, the servo dynamics) are named as
+  untested.
+- **The gain curve reads differently than first written.** Reviewer 2 showed that over lags 0 to
+  2 the gain falls mostly because the baseline rises with better forward correction, while the
+  search arm itself falls only after lag 2. `results.md` section 16 now decomposes the curve.
+- **Leader search is refuted without the confound**, on both simulators.
 
-## Points one reviewer made that stand
+## What remains, in order of weight
 
-- **Reviewer 1: a rival explanation for the flat 2D critic.** The 2D demonstration buffer is 98.8
-  percent successful, the mjlab buffer 65.2. A SARSA critic on near perfect data has nothing to
-  separate actions by. This explains the span difference without the physics. Added to
-  `results.md` 13.3 and conclusion 1 with a 35 GPU minute experiment in `next_steps.md`.
-- **Reviewer 2: the depth 0 arm is QT-Opt.** Sixteen of the 24.5 headline points come from
-  ranking policy samples by Q with no model, which is prior work. The rollout's 8 points are the
-  QWM specific part. `related_work.md` says so.
-- **Reviewer 3: the H2 "best depth" figure hides the baseline.** `figures/h2_best_depth.png` shows a
-  clean staircase for a result whose every cell is below no search. Not fixed; the text says it
-  and the depth against lag figure shows the baseline lines. A revised figure should carry the
-  baseline.
-- **Reviewer 3: the mjlab depth axis is right censored.** The best depth is 6, the grid maximum,
-  at three of four lags, so the proposal's collapse claim is not supported on mjlab, only not
-  refuted. Stated in `next_steps.md`; extending the grid to depth 8 and 12 is costed there.
-- **Reviewer 1: the 2D H4 verdict rests on a gap with p = 0.15 on two degrees of freedom.** The
-  results already call it marginal at lag 1; the summary script's rule prints "confirmed".
+1. **The cylinder pusher artefact** (reviewer 2). A cylinder gets one contact point against the
+   box and spins it far more than a box pusher would, on a task whose success test includes the
+   angle. Every result uses cylinders. The box option exists (`mjlab_fidelity.md`); rerunning the
+   fair H1 arms with it on one seed costs about 12 GPU minutes plus a retrain if the policy does
+   not transfer.
+2. **One seed for H3, H4, robustness, and transfer**, and the 2 point reproducibility floor
+   measured once on mjlab. The floor is now restated where sections 14 to 19 depend on it.
+3. **The document grew by accretion** (reviewer 3: 20 of 67 first round discrepancies fixed, 7
+   partly; the five listed in the second round are fixed in commit `b5ca036` and after). A
+   reader can reconstruct the order of events from `methodology.md` section 5b and
+   `results.md` section 2, but the summary table and the conclusions have been rewritten four
+   times and read like it.
+4. **Related work is thin on delay and communication literature** (reviewer 2); the novelty list
+   was corrected to drop the retracted critic span mechanism.
+5. **The mjlab robot speed (2.5 against 1.5 m/s) is documented and not controlled.**
 
-## What the meta reviewer would accept
+## What the meta reviewer would say to the authors
 
-The study as it stands is a strong workshop or technical report: the pipeline runs end to end on
-two simulators, every number is regenerated from committed data, the failure history is a result
-in itself, and the negative and positive pair is informative. For a main track submission the
-minimum is: three training seeds per simulator, the H1 arm against the sampled policy at 256 envs
-and 6 batches, the demonstration quality control for the critic span, the search controls (a
-random world model and a decoded state scorer), and a rerun of the sweeps with the per batch
-seeding so repeated cells agree. Those are the first eight items of `next_steps.md` plus the seed
-replication, about nine GPU hours.
-
-## Discrepancies that remain in the repository after the fixes
-
-- The sweep tables were produced before the per batch seeding, so repeated cells still differ
-  across groups until the sweeps are rerun.
-- The summary script's decision rules print "confirmed" for H2 and H3 on 2D where every cell is
-  below the baseline, and for H4 on 2D at p = 0.15; the results text corrects both, the script
-  does not.
-- The mjlab robot speed (2.5 against 1.5 m/s) and the eased 2D task are documented but not
-  controlled.
+For a learning project this is a good stopping point: the pipeline is end to end and resumable
+on two simulators, the claims are sized to their evidence, the failures are recorded as results,
+and three adversarial rounds have run against it. The work that would move it further is
+specific and cheap in GPU time (items 1 and 2 above, about two hours) but the returns are
+diminishing; the one experiment that could still change the story is the box pusher rerun,
+because it tests whether the mjlab positive rests on a contact artefact.

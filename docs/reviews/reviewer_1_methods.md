@@ -1,251 +1,220 @@
-# Reviewer 1: methods, correctness, and statistical support
+# Reviewer 1, round 2: methods, correctness, and statistical support
 
 ## Summary
 
-The paper asks whether test time world model search (the QWM recipe) helps a decentralized
-heterogeneous team, and how staleness of teammate information changes the useful search depth and the
-tree search discount. The authors build a batched 2D transport task and a mjlab (MuJoCo Warp) port of
-it, train one RLPD style agent per simulator, and run four hypotheses (H1 search helps, H2 best depth
-falls with lag, H3 best discount falls with lag, H4 an elected leader beats independent search) plus
-robustness, transfer, and ablation grids. The headline is a disagreement: on 2D depth 2 search loses
-9.1 points against the mean action (52.3 to 43.2), on mjlab it gains 24.5 points (45.1 to 69.5). The
-authors attribute the split to whether the critic can rank actions, and report the 2D critic as flat
-(values span 0.003). The engineering is careful, the tables regenerate exactly from the JSON files,
-and the authors state several limitations themselves. I cannot recommend acceptance in this form. The
-mjlab positive does not separate from the sampled policy baseline at any cell of the grid, the two
-governing documents define H1 differently and disagree on the 2D verdict, the claimed 2D mechanism is
-never measured, and the reported standard errors exclude a 3 to 4 point run to run variance that the
-repository itself exposes.
+The authors answered the central objection of round one. The fair H1, search against the sampled
+policy, now runs at 256 environments and 5 batches on three mjlab training seeds, with per episode
+outcomes saved and a paired bootstrap over 1,280 episodes per seed (`docs/results.md` section 16,
+`runs/mjlab*/results/day1_controls_f1.json`, `scripts/seeds_summary.py`). I recomputed all fifteen
+intervals from the raw per episode lists, and every one reproduces to the printed digit. The claim
+that depth 6 search beats the sampled policy at lags 0 and 1 in three of three seeds is real. The
+authors also built the two controls I asked for, and both cut against their own earlier story: a 2D
+agent retrained on 60.7 percent demonstrations raises the critic's action span to 1.07 times its
+noise and search still loses 18 points (section 14.6), and a momentum variant of the 2D task gives a
+span ratio of 1.09 and search still loses 13 to 18 points (section 18). Conclusion 1 now says the
+mechanism is not settled, which is the right verdict and is supported.
+
+The document did not keep up with the data. `docs/results.md` changed while I reviewed it: when I
+started, section 16 printed a table from the paired rerun and then described it in prose with the
+numbers of the superseded run, the summary table and conclusions 1, 2 and 5 carried the superseded
+numbers, and one training figure was wrong by ten points. Most of that is now repaired, and I record
+below only what is still live. The residue is real: conclusion 1 and `math.md` 10.7 still quote the
+superseded run, section 13.9 still asserts the mechanism that section 14.6 refutes, and five prose
+ranges in sections 14 to 19 do not match their files. Four round one weaknesses received no work at
+all. I raise my score, and I would raise it further for a document that says one thing per number.
 
 ## Strengths
 
-- The pipeline reproduces its own tables. `scripts/summarize.py --results results` and
-  `--results runs/mjlab/results` regenerate `docs/results_tables.md` and
-  `docs/results_tables_mjlab.md` byte for byte, and every table line of both appears verbatim in
-  `docs/results.md`. I found no arithmetic error in any table, and the verdict arithmetic is correct
-  where stated: H1 2D (`results.md:119`) gives -9.1 with 2 SE 4.6 against -9.11 and 4.61 in the JSON,
-  and H1 mjlab (`results.md:388`) gives +24.5 with 2 SE 5.3 against +24.47 and 5.32.
-- The compute model of `math.md` equation (31) matches measurement. With N=8 and J=4 it predicts 9,
-  45, 117, 189 rolls at depths 1, 2, 4, 6; the measured 2D increments over depth 0 at lag 1 are 6,
-  42, 117, 192 ms (`results.md:156`). Leader and independent both cost 68 ms (`results.md:218-223`),
-  so the H4 compute match is real.
-- The search score at `swarm/search.py:110,120` implements equation (29) of `math.md:441` as written,
-  and the argmax over surviving paths mapped back to the root (line 137) matches the pseudocode.
-  `swarm/nets.py:217-220,237-240` keeps Polyak copies of the encoders and the fusion,
-  `swarm/rlpd.py:97` uses them for the bootstrap belief, and the SARSA target at `swarm/rlpd.py:125`
-  matches `design.md:214-220`. `tests/test_env*.py` check the three friction facts in both physics,
-  the occlusion mask, and the reset invariants.
-- Conclusion 5 states that the sampled policy is the baseline a fair claim must beat. That is honest,
-  and it is the right baseline.
+- **The fair H1 resolves, and I can reproduce it.** `scripts/summarize.py` on both result trees and
+  `scripts/seeds_summary.py` regenerate `docs/results_tables.md`, `docs/results_tables_mjlab.md` and
+  `docs/results_tables_seeds.md` byte for byte. Recomputing the paired bootstrap from
+  `per_batch_success` gives seed 0 +13.5 [+10.1, +17.0], seed 1 +30.0 [+26.7, +33.3], seed 2 +15.8
+  [+12.0, +19.4] at lag 0, and +4.5 [+1.1, +8.0], +22.4 [+19.0, +25.9], +15.2 [+11.8, +18.7] at
+  lag 1. Those are the printed values.
+- **The pairing I asked for exists now.** `swarm/evaluate.py:62` returns `per_env_success` per batch
+  and seeds the torch RNG per batch, and `scripts/seeds_summary.py:38` bootstraps the paired
+  differences. `make_env(seed + i)` seeds the environment independently of the torch global RNG, so
+  every arm scores the same 1,280 initial conditions.
+- **The mechanism is now measured, and the authors report a result against themselves.**
+  `results/critic_action_span.json` holds the span, the ensemble spread, the ratio, the argmax
+  selection rate and the candidate distances, with the protocol in the file. Section 14.6 states
+  plainly that the span difference was mostly a property of the demonstrations, then shows the span
+  is not what decides the outcome.
+- **Section 19 is a real negative control.** The 2D best search cell minus no search reproduces
+  exactly from the six `h2.json` files. Two of the three 2D seeds store per episode outcomes, so I
+  computed the paired intervals the document omits: seed 1 lag 0 +0.8 [-4.9, +6.8], seed 2 lag 0
+  -0.8 [-6.8, +5.2]. Every 2D cell contains zero and every mjlab cell excludes it by more than 35
+  points. The 2D verdict is "search does not help", and the data supports that reading.
+- **The audit closes the cheap failure modes.** `results/audit.json` and
+  `runs/mjlab/results/audit.json` match section 15 exactly, including the 0.097 m and 0.34 m
+  displacement ceilings, and the launched payload observation is honest.
+- **`docs/math.md` section 13 is a real improvement.** Equation (44) separates a staleness term that
+  enters once at the root from a model term that grows with depth, and equation (50) then declines
+  to predict a stable argmax over depth, which is what the data does. The three point fit of section
+  10.7 reproduces exactly: slope -3.27, intercept 18.8, residuals +0.5, -0.7, +0.2.
 
 ## Weaknesses
 
-- **The mjlab positive does not separate from the sampled policy at any cell.** `results.md:399-402`
-  claims the margin over a random sample "reaches 2 SE only at the deeper settings (depth 6 at lag 0:
-  72.7 ± 4.3 against 65.4 ± 2.2)". That cell fails the authors' own rule: the gap is 7.3 and 2 SE is
-  9.8. I recomputed all twenty mjlab H2 cells against the sampled policy. Exactly one clears 2 SE
-  (depth 2 at lag 0, +5.5 against 5.2), and it compares a lag 0 search with a lag 1 sampled policy,
-  because the sampled policy was never measured at lag 0 or 4. Conclusion 5 repeats the claim. The
-  headline compares against a mean action the authors say "stalls in contact configurations that any
-  perturbation breaks" (`results.md:398`).
-- **The two governing documents define H1 differently and disagree on the 2D verdict.**
-  `math.md:568` sets H1 to `p(D=2) - p(D=0)`, "both at L=1", and says it "isolates the world model
-  and nothing else". `methodology.md:111` sets it to depth -1 against depth 2, and
-  `scripts/summarize.py` implements the second. Under `math.md`'s own H1 the 2D result is +0.9 with
-  2 SE 5.4, **not resolved**, not "refuted". The central negative claim (`results.md:17,119,122`)
-  rests on one definition and is contradicted by the other.
-- **The reported plus or minus excludes the search sampling variance, which is 3 to 4 points.** The
-  same configuration (depth 2, lag 1, independent, default team, 128 envs, 3 batches, seeds 1000 to
-  1002, same checkpoint) appears in four result files. On 2D it reads 45.6, 43.8, 42.4, 44.0, spread
-  3.1, against printed standard errors of 1.4 to 4.3. On mjlab it reads 70.3, 67.2, 66.4, 69.0, and
-  `transfer_unclamped_lift.json` adds 70.8, spread 4.4, against printed standard errors of 0.9 to
-  2.3. Each sweep runs in one process seeded once, so a cell's candidate sampling depends on the RNG
-  position every earlier cell left. Several conclusions sit inside that floor: the mjlab "value of
-  one imagined step falls from +8.3 to +5.2" (conclusion 2, `results.md:548`) is a 3.1 point change,
-  the "4 to 7 points" search margin is 4 to 7 points, and the H4 2D gaps are 6.0 and 8.6 points.
-- **The claimed 2D mechanism is asserted, not measured.** `results.md:23,127,541` state a critic span
-  of 0.003, a 1.4 percent mean action selection rate, and candidate distances of 0.34 against 0.28.
-  None exists in any file under `results/` or `runs/mjlab/results/`; I enumerated every JSON key in
-  both. `next_steps.md:276` lists "return `q_span` and `q_std` from `swarm/rlpd.py` `Agent.update`"
-  as future work, and `next_steps.md:431` says the quantity holds "until r is instrumented". The
-  central mechanism is unimplemented, which contradicts `results.md:3`, "Every number below comes
-  from the files in `results/` and is regenerated by `python scripts/summarize.py`".
-- **A simpler mechanism explains the split and is never tested.** `results/offline.json` records an
-  offline success rate of 0.988 on 2D; `runs/mjlab/results/offline.json` records 0.652. The critic is
-  a SARSA critic on that data, and `design.md:219` says so: "The critic therefore values the behavior
-  data, which is 99 percent successful in the offline half". A critic fit to behavior that succeeds
-  98.8 percent of the time has almost no outcome variance left to attribute to the action, so Q
-  collapses to a function of the state; on mjlab the behavior fails a third of the time, so the
-  action changes the outcome. This explains the flat 2D critic, the ranked mjlab critic, and every
-  number in the paper, and it has nothing to do with "quasi static physics" (`results.md:526-528`).
-- **The cross simulator claim is confounded by the robot speed.** `scripts/common.py:env_config`
-  returns `EnvConfig(v_max=2.5)` for mjlab and 1.5 for 2D. `mjlab_port.md:2` says the change matters:
-  "At 1.5 m/s the scripted controller reaches 52 percent; at 2.5 m/s it reaches 75 percent". A 1.67
-  times larger action scale raises the action dependence of the critic directly, the exact quantity
-  said to distinguish the simulators, and neither simulator was run at the other's speed.
-- **The consistency gate of `math.md` section 11.3 fails on mjlab and was never run there.**
-  `math.md:604-607` requires the beta 0 column to reproduce the D=0 column within 2 SE, and says "If
-  it does not, the search code has a defect and neither grid is interpretable". At lag 1 on mjlab the
-  cells read 58.3 ± 1.4 and 62.2 ± 1.1, gap 3.9 against a threshold of 3.7, so the gate fails.
-  `results.md:204-206` reports it only for 2D, and the failing simulator carries the positive result.
-  Note also that `swarm/search.py:104` sets `D = 0` whenever `beta == 0`, so the two columns are the
-  same code path and the check can only measure run to run noise, never correctness.
-- **The H4 negative is an artifact of the scoring function.** In leader and round robin mode the
-  search samples a joint action over all K slots (`swarm/search.py:57-58`), but the root score reads
-  the critic at the leader's own belief with the leader's own action only (`swarm/search.py:110`),
-  and every deeper term does the same (line 120). A "joint search" therefore ranks 49 joint
-  candidates by one robot's individual Q, and the five teammate actions in the winner are unscored
-  samples. `math.md:428-431` prescribes the same, so this is a design choice and not a coding slip,
-  but conclusion 3 (`results.md:551`) then tests a joint search with no team objective. The beam is
-  also unmatched: the leader keeps 4 of 49 root candidates, the independent searcher 4 of 9.
-- **The nine training changes carry no evidence and cannot be ablated from this repository.**
-  `results.md:42-52` tables nine runs with a symptom, a cause, and a change, and `results.md:565`
-  calls the recipe a result. None has a run in `results/`. `scripts/train.py:30-42` exposes no flag
-  for `backup_entropy`, `bc_weight`, `dec_b_weight`, `target_policy`, `target_reduce`, `target_min`,
-  or `target_max`; all seven are hard coded in `swarm/rlpd.py:21-65`. The causal claims are post hoc
-  readings of single seed curves. The table also omits a tenth change: `swarm/rlpd.py:63` sets
-  `target_reduce = "mean"`, but run 4 reports only the clamp.
-- **"2 SE" is not a 95 percent rule with three batches.** `swarm/evaluate.py:70-79` takes the sample
-  standard deviation over 3 batch means, so every interval has 2 degrees of freedom. Two standard
-  errors then cover about 82 percent, not 95, and the small sample bias of `s` lowers the estimate a
-  further 11 percent: the mean printed standard error over the 87 cells of each run is 0.0189 and
-  0.0191, against a mean binomial standard error of 0.0235 and 0.0236. H4 on 2D is **confirmed**
-  (`results.md:225,228`) on a lag 4 gap of 8.6 against 2 SE 7.5; a t test with 2 degrees of freedom
-  gives p = 0.15. The verdict does not survive its own data.
-- **The H2 and H3 rules fire about one time in ten under a pure noise null.** The measure is an
-  argmax over 5 depths or 7 betas at 4 lags, with no noise test in `scripts/summarize.py`. Simulating
-  a uniform argmax null, the H2 rule fires with probability 0.104 and the H3 rule with 0.084.
-  `math.md:588` adds a third condition to fix exactly this, "at the smallest L the peak beats D=0 by
-  more than 2 se", the guard "so that D*(L) marks a real peak and not the argmax of noise".
-  `methodology.md:112` drops it and `scripts/summarize.py` does not implement it; it happens to pass
-  on both runs, but the shipped rule is the weaker one. The reported 2D sequence is also partly
-  arbitrary: at lag 1 depths 2 and 4 tie exactly at 0.4557291667, and the strict `>` in
-  `scripts/summarize.py` breaks the tie downward, which is what prints "4, 2, 0, 0".
-- **The pairing the authors claim is never used.** `methodology.md:121` and `results.md:573` say cell
-  to cell comparisons are "paired on the same snapshot and the same first episodes" and call that
-  "the reliable part". The env seeds are shared, but `swarm/evaluate.py` saves only batch means, so
-  no paired statistic exists and the difference standard error assumes independence. A McNemar test
-  on the 384 paired episodes would be far more powerful, and the per env outcomes it needs were
-  discarded.
-- **The result files mix versions of the code.** `swarm/env_mjlab.py` has an mtime of 15:57, and
-  every mjlab result file except `transfer.json` (16:01) predates it: `h1_*` 15:06, `h2` 15:17, `h3`
-  15:26, `h4` 15:28, `robust` 15:31, `ablations` 15:38, `belief_best.pt` 14:28. `results.md:519`
-  argues "The default team has two grippers, so the snapshot and every other cell were unaffected".
-  The arithmetic supports it (`swarm/env_mjlab.py:262` clamps at 0.8 x 78.5 = 62.8 N and two grippers
-  lift 50 N), but nothing was rerun to confirm it. The same pattern holds on 2D: `swarm/belief.py`
-  and `swarm/rollout.py` are 12:15 and `swarm/search.py` is 12:30, while `h1_*` is 11:47, `h2` 12:04,
-  `h3` 12:17, `h4` 12:20, `robust` 12:23. `scripts/run_all.sh` skips any step whose output exists, so
-  a partial rerun keeps the stale files.
-- **The lock files do not cover mjlab.** `methodology.md:31` lists `uv.lock` and `pylock.toml` as the
-  software record. Neither contains `mjlab`, `mujoco`, or `warp`. The installed environment runs
-  mjlab 1.6.0, mujoco 3.11.0, and warp-lang 1.17.0, and `pyproject.toml` pins a bare git commit with
-  no lock over its tree. The half of the study carrying the positive result cannot be rebuilt.
-- **Snapshot selection is an unaccounted optimization on the evaluation metric.**
-  `scripts/train.py:91` keeps the argmax over every evaluation. On mjlab that is 48 evaluations of
-  256 envs, each with a binomial standard error near 3.1 points. The selected best of 48.4 percent
-  sits at step 20,500 while the final checkpoint is 27.7, so the run is not converged, and a best of
-  48 inflates by roughly 2 standard errors.
-- **The specification documents do not match the code.** `methodology.md:77` states the critic target
-  is "the minimum of 2 random heads"; `swarm/rlpd.py:63` sets `target_reduce = "mean"` and
-  `design.md:202` says the mean. The methodology file is the one the paper calls the replication
-  recipe. `design.md:228` says the model "is pretrained on the offline buffer", while
-  `methodology.md:85-88` says "There is no separate pretraining phase" and `swarm/rlpd.py:164-174`
-  trains it from the first update. `design.md:225` names `swarm/world_model.py`, which does not
-  exist. `math.md:571,586,600,618` cite `scripts/sweep.py --grid depth x lag`, `--leader`, and
-  `results/h1.json`; the real flags are `--which h2/h3/h4` and the real outputs are
-  `results/h1_depth{-1,0,2}.json`. `math.md:558` fixes the protocol at "256 environments" while every
-  sweep cell uses 128. `scripts/run_all.sh` produces neither the `full36k` 2D baseline nor the
-  `belief_12k` mjlab run that `results.md:77,354` report.
-- **Smaller items.** `results.md:131` and `:86` quote a random sample at 60 percent; the ablation
-  table says 62.2. `results.md:86` compares 70 against 47, but the 70 is `train_success` from
-  `scripts/train.py:81`, which counts every episode of the collection rollout, while the 47 is the
-  first episode mean action protocol. `results.md:468` calls the mjlab leader disagreement "again
-  about half"; the table says 0.34 and 0.40. `mjlab_port.md:3` gives mjlab throughput at 256 envs as
-  11,850 and 14,400, while the JSON and `results.md:346` say 9,064. `results.md:276-278` reports the
-  masked message ablation three times at 13.5 ± 2.6; that is one measurement, because a masked table
-  makes the lag inert. Section 13 sits between sections 10 and 11.
+- **Conclusion 1 and `math.md` 10.7 still quote the superseded run.** `docs/results.md:827` gives
+  "+19.3 ± 6.3 and +14.9 ± 7.4" where section 16, the summary table and conclusion 5 now give
+  +19.8 ± 8.9 and +14.0 ± 9.0. `docs/math.md:831` fits its slope to "+19.3, +14.9, and +5.9". Those
+  three values are `day1_controls.json` on all three seeds; the paired rerun in
+  `day1_controls_f1.json` gives +19.8, +14.0, +5.5. The bound's headline fit therefore rests on the
+  run the results document has stopped reporting.
+- **Section 13.9 still asserts the mechanism that section 14.6 refutes.** `docs/results.md:557-559`
+  reads "The 2D task's quasi static dynamics made the critic action flat; contact physics did not."
+  Section 14.6 shows the flat span came from the demonstrations, and section 18 shows momentum does
+  not change the outcome. The same bullet list (`:564`) still says the H1 gain "reaches significance
+  only at depth 4 to 6", which I asked to be withdrawn and which section 14.1 supersedes.
+- **The snapshot selection bias is now visible and still unaddressed.** Section 16 prints "48.4,
+  30.9, 30.1" for the three best training evaluations. `scripts/train.py:91` selects each snapshot
+  by an argmax over 48 evaluations of 256 episodes, the three final evaluations are 27.7, 25.8 and
+  29.7, and the search gain is largest on the two snapshots the selection could not inflate. The
+  document draws no inference from that.
+- **The 2 point reproducibility floor is stated once and used nowhere.** `docs/results.md:551`
+  measures it on mjlab and says the printed standard errors are of the same size. Sections 14, 16,
+  17, 18 and 19 never restate it, and several claims sit inside it: "about 4 on 2D" for the random
+  model (`:625`), "5 to 8 points" for the forward correction (`:646`), the depth 6 minus depth 0
+  values of -0.3 to -2.2 in section 16 (`:739`), "worth about 4 points" in section 18 (`:789`), and
+  every 2D cell of section 19, which spans -1.6 to +4.2. There is no 2D measurement of the floor.
+  The paired bootstrap does not fix this: it resamples episodes from one execution, so a seed 0
+  lag 1 interval of [+1.1, +8.0] is narrower than the run to run floor is wide.
+- **The five point staleness curve mixes two measurement epochs.** `scripts/seeds_summary.py:26`
+  loads `day1_controls_f1.json` when it exists and then always appends `lag_curve.json`. The f1
+  files were written on 09-13 at 15:38 to 15:59, `lag_curve.json` on 09-12 at 23:58 to 09-13 00:11.
+  So lags 0, 1 and 4 of the section 16 table come from one execution and lags 2 and 8 from another,
+  and section 16 reads a slope off that curve. The slope is also misquoted: "about -2.4 points per
+  frame" against a least squares value of -2.32 on either set of five points.
+- **Section 16 contradicts itself on the random world model control.** `docs/results.md:736-739`
+  reports the control per seed, 11 to 13 points on seed 0, 6.5 on seed 1, 5 and 0 on seed 2, from
+  `runs/mjlab_seed*/results/wm_control.json`. Three lines later (`:745`) it says "The random world
+  model control of section 14.2 ran on seed 0 only". The per seed numbers are also weaker than
+  stated: seed 1 depth 2 is 79.9 ± 3.4 against 73.4 ± 0.5, a gap of 6.5 against 2 SE of 6.9, so "the
+  rollout helps in every seed at depth 2" does not clear the authors' own rule on seed 1.
+- **The joint search is still scored by one robot's individual critic.** `swarm/search.py:130` and
+  `:141` read `_q` at the leader's own slot only, for every mode, and `_candidates` gives the joint
+  modes 49 root candidates against 9, with the same beam of 4. Section 14.5 removes the fallback
+  confound, which was the right control, but H4 still compares two unmatched searches under one
+  robot's individual objective. Conclusion 3 should say what was tested.
+- **The audit never runs the arm that carries the result.** `scripts/audit.py:47` calls
+  `runner.step("mean")`, so zero action, random action and the trained mean policy are audited and
+  the search is not. Every positive claim in the paper is a search claim.
+- **Four round one weaknesses received no work.** The robot speed confound stands:
+  `scripts/common.py:47` returns `EnvConfig(v_max=2.5)` for mjlab against 1.5 for 2D, no run exists
+  at the other speed, and conclusion 1 (`:833`) names the contact model and the servo dynamics
+  without naming the 1.67 times action scale. The nine learner changes of section 2 remain
+  unfalsifiable: `swarm/rlpd.py:21-65` still hard codes `backup_entropy`, `bc_weight`,
+  `dec_b_weight`, `target_policy`, `target_reduce`, `target_min` and `target_max`. `uv.lock` and
+  `pylock.toml` still contain zero matches for mjlab, mujoco or warp. And the code still postdates
+  the data: `swarm/env.py` is 09-12 23:47 and `swarm/env_mjlab.py` is 09-13 00:00, later than every
+  result file except the f1 reruns and the lag curve, including both audits.
+  `docs/mjlab_fidelity.md` argues the new options default to the old physics and the argument reads
+  correctly, but nothing was rerun to confirm it.
+- **The methodology now carries two decision rules for H1.** A new section 5b documents the day
+  scripts and states the fair rule: depth 6 minus the sampled policy, paired over episodes, a
+  bootstrap interval excluding zero, sign agreeing in all three seeds. That is the right rule and it
+  matches what section 16 does. Section 7, the table the document calls the decision rules, still
+  decides H1 on depth -1 against depth 2 at 2 standard errors, and section 8 still says "One
+  training seed". `docs/math.md:559` still fixes evaluation at "256 environments" while every sweep
+  uses 128, and still says "all runs use seed 0". `scripts/summarize.py` still prints "confirmed"
+  for 2D H3 and H4 where the text corrects it.
+- **Smaller mismatches between sections 14 to 19 and their files.** 14.1 prints +7.1 and 2 SE 4.3 at
+  lag 1 where the file gives +7.19 and 4.23, because that table was recomputed from rounded cells.
+  14.2 says a random model costs "11 to 13 points on mjlab"; the file gives 10.4 and 12.8. 14.4 says
+  the forward correction is worth "5 to 8 points at every lag from 1 up"; the file gives 4.7, 5.5
+  and 8.1. 16 says the argmax "reaches 70 to 80 percent"; the cells run 67.6 to 80.2. 17 says the
+  plain seeds' policy runs "47 to 66"; the f1 files give 50.0 to 66.0. 18 uses a best of 48 training
+  evaluation, 38.7, as the mean policy row of a 128 environment three batch table, when
+  `runs/2d_momentum/results/day1_controls.json` holds the protocol matched 36.2 ± 2.5; against that
+  the loss is 11 to 16 points, not "13 to 18". 19 says the mjlab seed 1 and 2 mean policies are
+  "weak at 30 to 36 percent"; those no search cells run 19.5 to 30.2.
+- **Round one items open in sections 1 to 13.** The 2D sampled policy appears as 60 (`:131`), 61.7
+  (14.3) and 62.2 (section 9). The 70 against 47 comparison at `:86` still mixes `train_success`
+  with the first episode protocol. Section 13.6 still calls the leader disagreement "again about
+  half" against 0.34 and 0.40. `docs/mjlab_port.md:51,54` still gives 11,850 and 14,400 env steps
+  per second at 256 envs against 9,064 in the JSON. The section order runs 1 to 10, 13, 14 to 19,
+  11, 12.
 
 ## Questions for the authors
 
-1. State the margin of depth 2 search over the sampled policy at lag 1 on mjlab with its 2 SE. I get
-   +4.2 with 2 SE 5.8. Which cell clears 2 SE against the sampled policy at the same lag? If none
-   does, what survives of conclusion 1?
-2. `math.md:568` defines H1 as `p(D=2) - p(D=0)`; `methodology.md:111` defines it as depth 2 against
-   depth -1. Which is the registered hypothesis? Under the first the 2D result is +0.9 with 2 SE 5.4,
-   which is not resolved. Does the headline change?
-3. Produce the script that computes the 0.003 critic span, the 1.4 percent selection rate, and the
-   0.34 against 0.28 distances, and the file that holds them. If they came from an interactive
-   session, say so and state the sample size.
-4. The offline data succeeds 98.8 percent on 2D and 65.2 percent on mjlab. Is the flat 2D critic a
-   property of the physics or of a SARSA target on near perfect behavior? What is the 2D span when
-   the same agent trains on a degraded offline buffer?
-5. Report the 2D task at `v_max = 2.5`, or mjlab at 1.5. Without one, how do you separate contact
-   physics from a 1.67 times larger action scale?
-6. The section 11.3 gate fails on mjlab at lag 1 (gap 3.9, 2 SE 3.7). `math.md:606` says that means
-   "neither grid is interpretable". How do you read the mjlab H2 and H3 grids given that?
-7. In leader and round robin mode the root score is `Q(b_leader, a_leader)` only. Why is a joint
-   action ranked by one robot's individual Q, and what does H4 measure if the teammate slots of the
-   winning candidate are unscored samples?
-8. The same cell read from four files differs by 3.1 points on 2D and 4.4 on mjlab. Should the
-   reported plus or minus include the search sampling variance, and which conclusions survive if so?
-   Relatedly, `MAX_EVAL_ENVS = 256` caps a batch near a 3.1 point binomial standard error while the
-   disputed effects are 4 to 7 points; why not raise the env or batch count for the decisive cells?
-9. Which of the nine training changes were tested by turning one off and rerunning? If none, please
-   relabel the table as a development log rather than a result.
-10. Why do `uv.lock` and `pylock.toml` contain no mjlab, mujoco, or warp entry, and which mjlab
-    result files came from which version of `swarm/env_mjlab.py`?
+1. Section 16 and conclusion 5 now use the paired rerun. Please carry the same set into conclusion 1
+   and into `math.md` 10.7, and rerun `lag_curve.py` in the rerun's epoch so the five point curve is
+   one experiment rather than two.
+2. Does the bound's conclusion change under the rerun? The three point fit gives slope -3.27 and
+   intercept 18.8 on +19.3, +14.9, +5.9, and the text reads a linear staleness term off it.
+3. Does section 13.9 still state the authors' position after sections 14.6 and 18? If not, please
+   rewrite it and drop the "reaches significance only at depth 4 to 6" bullet.
+4. The reproducibility floor is measured on mjlab only. What is it on 2D, and which claims in
+   sections 14, 18 and 19 survive it? Section 19's 2D row spans 6 points and the floor is 2.
+5. Please run the audit on the depth 6 search arm. The displacement ceiling and the early success
+   check mean little on an arm nothing claims.
+6. Conclusion 1 names the contact model and the servo dynamics. Why not the robot speed?
+   `scripts/common.py:47` sets 2.5 against 1.5, and `mjlab_port.md:2` says the change is worth 23
+   points to the scripted controller. One 2D run at 2.5 settles it. Relatedly,
+   `docs/mjlab_fidelity.md` builds `pusher_shape` and wires it into no script; what blocks running
+   the fair H1 arms with `pusher_shape="box"`?
+7. The 2D seeds 1 and 2 sweeps store per episode outcomes. Why does section 19 report no interval?
+   I get seed 1 lag 0 +0.8 [-4.9, +6.8] and seed 2 lag 0 -0.8 [-6.8, +5.2], which strengthen the
+   negative.
+8. `scripts/day1_controls.py:55` builds the random world model outside the seeded region of
+   `evaluate`, so its weights depend on the RNG position the previous cell left. Was the control
+   repeated with a fixed model seed?
 
 ## Limitations
 
-The authors state limitations in `results.md:571-586` and they are unusually candid: one training
-seed, a single mjlab seed at a 45 percent baseline, the SARSA critic valuing behavior data, the
-cloning term and belief decoder as deviations from RLPD, and the eased task. Conclusion 5 states the
-sampled policy problem outright. Three limitations are missing and they are the ones that matter. The
-paper does not say that the reported standard errors exclude the search's own sampling variance,
-which its repeated cells put at 3 to 4 points; that the 2D mechanism is unmeasured; or that the
-velocity change confounds the cross simulator claim. The section also does not withdraw the claims
-the body makes and the data does not support, in particular the "reaches 2 SE at depth 4 to 6" claim
-of section 13.3.
+Section 12 now states the seed structure correctly: sections 3 to 10 and 13 are seed 0, sections 16
+and 19 are three seeds for the fair H1 arms and the H2 gain, and the remaining sweeps are one seed.
+That is an honest map. Three limitations are still missing. The document does not say that the
+reported intervals exclude the run to run floor it measures in 13.8, and that the floor is measured
+on one simulator. It does not say that the snapshot for every sweep is an argmax over 48 noisy
+evaluations. And it does not list the robot speed as a candidate for the cross simulator split.
 
 ## Ethics
 
-No ethics concerns. The work is simulation only, uses no human or animal data, and releases no model
-or dataset with misuse potential.
+No concerns. Simulation only, no human or animal data, no released model or dataset with misuse
+potential.
 
 ## Scores
 
-- **Soundness: 2** (fair). The code matches the mathematics on the parts I spot checked and the
-  tables regenerate exactly. The statistical support does not hold: the headline positive does not
-  separate from the correct baseline, an interpretability gate the authors set fails on the simulator
-  that carries it, the intervals have 2 degrees of freedom and are used as 95 percent intervals, and
-  the stated mechanism is unmeasured.
-- **Presentation: 3** (good). The writing is clear and direct, the tables are well organised, and the
-  provenance of each number is stated. Points off for section 13 sitting between sections 10 and 11,
-  for three documents that disagree on H1 and on the critic target, and for prose numbers that no
-  file contains.
-- **Contribution: 2** (fair). The 2D negative and the staleness directions are worth reporting, and
-  the two simulator contrast is a good idea. The contribution as claimed, that the QWM mechanism
-  transfers when the critic can rank actions, is not established by this evidence.
-- **Overall: 4** (borderline reject: technically solid paper where reasons to reject, for example
-  limited evaluation, outweigh reasons to accept).
-- **Confidence: 4** (confident but not absolutely certain). I read the documents and the code and
-  recomputed every table and verdict from the JSON files on CPU. I ran no GPU code, so the run to run
-  variance I report comes from repeated cells already in the repository.
+- **Soundness: 3** (good). The headline claim now has three seeds, 1,280 paired episodes per cell,
+  and intervals I reproduced exactly. Two rival mechanisms were tested and eliminated with purpose
+  built runs. The remaining costs are the unaudited search arm, the uncontrolled robot speed, the
+  unfalsifiable learner recipe, and intervals that exclude a floor the paper itself measures.
+- **Presentation: 2** (fair). This fell from round one. Section 13.9 asserts what section 14.6
+  refutes, conclusion 1 and the bound quote a superseded run, section 16 contradicts itself on which
+  seeds carry a control, five prose ranges do not match their files, and the section order now runs
+  1 to 10, 13, 14 to 19, 11, 12.
+- **Contribution: 3** (good). A search that helps in contact physics and not in a quasi static
+  abstraction, replicated across three seeds against the correct baseline, with two candidate
+  mechanisms eliminated by direct experiment, is worth reading. The eliminations are the part I value
+  most, because they are negative results the authors paid to obtain.
+- **Overall: 5** (borderline accept: technically solid, reasons to accept slightly outweigh reasons
+  to reject).
+- **Confidence: 4** (confident but not absolutely certain). I recomputed every interval, gap, slope
+  and fit in sections 14 to 19 from the JSON files on CPU, regenerated all three table documents, and
+  read the search, evaluation, audit and environment code. I ran no GPU code.
 
-## What would change my score
+## What changed my score, and what would change it again
 
-Four changes would move me to accept. First, rerun the cells that carry the claims at 2,000 episodes
-or more with 10 batches, so the intervals have real degrees of freedom, and report every mjlab search
-cell against the sampled policy at the same lag. If depth 4 to 6 beats the sampled policy by 5 points
-with a genuine 95 percent interval, conclusion 1 stands and the paper becomes interesting. Second,
-instrument the critic span. Return `q_span` and `q_std` from the update and from the search, plot
-them for both simulators against the training step, and show that the 2D span is small where the
-mjlab span is not. That turns the mechanism from an assertion into the paper's best figure. Third,
-separate the rival mechanisms: run the 2D task at `v_max = 2.5`, and run the 2D learner on a degraded
-offline buffer. If the 2D critic stays flat under both, the physics story survives; if it does not,
-the paper has a simpler finding about SARSA critics on near expert data. Fourth, either give the
-leader search a team objective, or retitle H4 as a test of broadcasting one robot's individually
-optimal joint sample. Smaller fixes I expect regardless: pick one definition of H1, run the section
-11.3 gate on mjlab and report the failure, correct the "reaches 2 SE at depth 4 to 6" sentence, add
-mjlab to the lock files, add flags for the seven hard coded learner choices, and save per env
-outcomes so a paired test is possible.
+This review reads the repository as of 09-13 16:00. `docs/results.md` and `docs/methodology.md`
+changed while I worked, in the direction I am asking for, so treat the bookkeeping weaknesses as a
+snapshot. Round one gave 4 because the headline positive did not separate from the sampled policy at
+any cell,
+the mechanism was asserted rather than measured, and the intervals excluded a 3 to 4 point run to run
+variance that the repository exposed. All three are answered. The fair H1 now runs at 256
+environments and 5 batches on three seeds with per episode pairing, and I reproduced every interval.
+The mechanism was measured, found to be a property of the demonstrations rather than the physics, and
+retracted in conclusion 1. The per batch seeding cut the repeated cell spread from 3.9 to 2.6 points
+and the remainder is reported. Two controls I asked for exist, and both returned answers the authors
+did not want. Soundness and contribution each rise a point and the overall score rises to 5.
+
+Two things would move me to 6 or 7, and neither needs much GPU time. First, finish making the
+document say one thing per number: carry the rerun into conclusion 1 and `math.md` 10.7, rerun the
+lag curve in that execution, rewrite section 13.9, and put the 2 point floor next to every claim
+smaller than 5 points. That is editing, not computing, and it is the largest single
+gain available. Second, run the two cheap controls that remain: the 2D task at `v_max = 2.5`, which
+removes the last confound in the cross simulator claim, and the fair H1 arms with
+`pusher_shape="box"`, which tests the contact model hypothesis with an instrument the authors have
+already built and verified. Adding the search arm to the audit and a fixed seed to the random world
+model costs an hour. Beyond that, I want the nine learner choices behind flags, with one ablation
+each, before conclusion 6 calls the recipe a result.

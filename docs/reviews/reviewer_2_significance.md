@@ -1,309 +1,220 @@
-# Reviewer 2: significance, novelty, and positioning against prior work
+# Reviewer 2, round 2: significance, novelty, and positioning
 
 **Paper:** Decentralized World Model Search for Heterogeneous Cooperative Transport
-**Lens:** what this adds over prior work, and whether the claims survive the evidence.
-
----
+**Round 1 scores:** soundness 2, presentation 2, contribution 2, overall 3, confidence 4.
 
 ## Summary
 
-The submission ports the QWM recipe (Dong et al., 2026), which trains a policy and a Q critic on real
-transitions and uses a learned world model only at decision time for a short tree search, into a
-decentralized heterogeneous cooperative transport task. Each robot builds its own belief from a type
-specific encoder, an attention fusion over neighbor latents that arrive one or more frames late, and a
-forward correction that rolls each stale latent through the shared dynamics model. Inside the search a
-robot imagines its teammates by running the shared policy on its own estimate of each teammate's belief.
-The learner is RLPD. The authors run the study twice, on a batched 2D quasi static simulator and on an
-mjlab port with contact physics, and report that the runs disagree: search costs 9 points on 2D and adds
-24.5 on mjlab. They attribute the disagreement to the critic's action sensitivity, and add staleness
-trends for the best depth and the best lookahead discount, a refutation of leader elected search, and
-zero shot transfer to 16 robots. The engineering is careful and the documentation is unusually honest.
-`docs/next_steps.md` anticipates most of my objections, prices the experiments that would decide four of
-the six conclusions at 36 GPU minutes, and reports that none of them ran.
+The revision answers the central objection of round 1, and it answers it in the authors' favour. The fair H1 now runs against the sampled policy and a random
+candidate at 256 environments and 5 batches on three mjlab training seeds. Depth 6 beats the sampled policy by 19.8, 14.0, 9.3, 5.5 and -0.3 points at lags 0, 1,
+2, 4 and 8, the paired bootstrap interval excludes zero in 3 of 3 seeds at lags 0 and 1, and the per seed gain falls monotonically over all five lags in 3 of 3
+seeds (`results.md` 16, `results_tables_seeds.md`). The authors replaced the best depth argmax, which I attacked in round 1, with the gain over the baseline,
+after a rerun with per batch seeding flipped the argmax from 6, 6, 6, 4 to 6, 2, 4, 1 and the verdict to "not resolved" (13.4). `math.md` section 13 adds a
+Lipschitz bound with proofs whose content is that staleness enters the score error once at the root while model error enters per depth, so it predicts a stable
+gain and declines to predict a stable argmax. Three explanations for the 2D negative are eliminated by experiment: demonstration quality and the critic's action
+span (14.6) and payload momentum (18). `related_work.md` exists. `mjlab_fidelity.md` measures four fidelity options and reverses its own prediction on one of
+them.
 
----
+The cost of this honesty is that the mechanism is now unknown. Every mediator the study proposed has been tested and rejected, and conclusion 1 says so. The paper
+has a well measured effect with no explanation. Three problems follow. Over lags 0 to 2, which carry most of the headline slope, the gain falls because the
+baseline improves, not because the search degrades. Across the four mjlab agents the search's margin tracks how weak the policy is rather than how good the search
+is. And the only positive result runs on a contact configuration the authors' own fidelity study shows produces 19 times more spurious yaw.
 
 ## Strengths
 
-- The test time sweep design is economical. One snapshot funds 76 cells, every cell is paired on the
-  same weights and env seeds, so within sweep comparisons are trustworthy (`methodology.md` section 8).
-- The disagreement between the two simulators is the headline rather than a footnote. Most submissions
-  would have dropped the 2D run (`results.md` section 1).
-- The probe on the 2D failure is concrete: the critic spans 0.003 across the policy's own nine
-  candidates, and the argmax picks the mean action 1.4 percent of the time against a chance rate of 11
-  percent (`results.md` section 5). That is a measured quantity, not a story.
-- `math.md` section 10 separates what is a bound under a stated assumption (equation 34) from what is a
-  labelled heuristic (equations 35 to 38). Few submissions mark that line, and `results.md` section 12
-  with `next_steps.md` name the sampled policy problem, the censored depth axis, the leader fallback
-  confound, and the single seed without being asked.
-- The design choice that a teammate estimate receives no new information at any depth, so its age
-  feature stays at the root value, is correct and, as far as I know, unpublished (`math.md` section 9.1).
+1. **The fair H1 resolves.** `results.md` 14.1 gives +12.8 against 2 SE 3.7 at lag 0 and +7.1 against 2 SE 4.3 at lag 1. I recomputed the 2 SE column and it is
+   now the standard error of the difference, which round 1 found wrong twice. Section 16 adds two seeds and a paired bootstrap over 1,280 first episodes per seed.
+   This is the arm I asked for, at the size I asked for.
+2. **The monotone staleness curve is the strongest result in the package.** Per seed gains are 13.5, 4.5, 1.0, -0.5, -10.5; 30.0, 22.4, 18.2, 11.2, 8.4; and 15.8,
+   15.2, 8.7, 5.9, 1.2 (16). Three independent five point orderings, all monotone, no argmax.
+3. **The authors broke their own results and published the breaks.** The seeding rerun flipped H2 and H3 to "not resolved" (13.4, 13.5) and 13.8 publishes the 2
+   point reproducibility floor.
+4. **Four clean negative results.** Leader search without the fallback loses by 19 to 40 points on both simulators (14.5). The critic action span rises with
+   noisier demonstrations and still fails to predict whether search helps (14.6). Momentum does not reproduce the mjlab positive (18). Collecting with search does
+   not raise the ceiling (17). The last two contradict, respectively, the authors' preferred explanation and a claim in QWM, the base method.
+5. **The bound earns its place by predicting which statistic is stable.** Equation (45) makes staleness a constant offset in depth and model error a slope in
+   depth, so equation (50) predicts no stable argmax over depth, which 13.4 then reports.
+6. **`mjlab_fidelity.md` section 4 is reusable outside this project.** A cylinder pusher gets one contact point because the multicontact expansion in
+   `mujoco_warp/_src/collision_convex.py` admits BOX and MESH only, so two cylinder pushers turn the payload 1.003 rad where two box pushers turn it 0.054 rad.
 
----
+## Round one weaknesses: addressed, partly, or not
+
+- **W1, no related work. Partly.** `related_work.md` covers QWM, QT-Opt, Hamrick et al., MuZero, TD-MPC2, RLPD, REDQ, TD3+BC, CQL, IQL, SAC+AE, Dec- POMDPs,
+  CommNet, TarMAC, MAPPO, QMIX, I-POMDPs and Self Other Modeling. Six of my ten gaps close, four stay open.
+- **W2, the headline does not beat the one line baseline. Addressed.** `results.md` 14.1 and 16 answer my arithmetic with a larger sample and a correct standard
+  error, and the answer is positive at lags 0 and 1.
+- **W3, a property of two checkpoints, not two physics classes. Partly.** Three seeds per simulator exist (16, 19), so the checkpoint half is answered. The
+  physics half is conceded: conclusion 1 states what separates the simulators is not settled. Momentum and demonstration quality are controlled; the robot speed,
+  the training budget and the eased 2D task are not.
+- **W4, H2 and H3 are a noisy argmax over a censored grid. Addressed for the statistic.** The argmax flipped on rerun, the authors said so, and the gain replaced
+  it. Depth 6 is still the grid maximum, and no oracle teammate arm exists.
+- **W5, the H4 refutation carries the H4 confound. Addressed.** `results.md` 14.5 runs a leader election with no fallback on both simulators. Independent search
+  wins by 19 points on 2D and 40 on mjlab.
+- **W6, the belief pipeline and transfer are buried and confounded. Partly.** Section 14.4 isolates the forward correction at 5 to 8 points on mjlab and shows it
+  accounts for the whole 2D staleness rise. But F11, the per team size difficulty control, was dropped because "the bounded lift explained the transfer loss"
+  (`next_steps.md`). The lift bug explained a transfer loss; my objection concerned the transfer gain, which conclusion 4 still claims at 96.6 percent on 16
+  robots.
+- **W7, nine training changes are engineering and rediscovery. Partly.** `related_work.md` names TD3+BC, CQL, IQL, SAC+AE and REDQ, and three seeds partly answer
+  the single path objection. The SARSA target rival was not tested: 14.6 changed the buffer and kept `target_policy`.
+- **W8, the testbed does not support claims about contact physics. Partly.** `mjlab_fidelity.md` found a bug that changed a published number, but neither call
+  site passes `mj`, so every result still runs the kinematic latch, the central lift, no robot collision and cylinder pushers. Best mjlab training evaluation is
+  48.4 and search reaches 73, against a scripted controller at 83.6.
+- **W9, the conclusions and the next steps contradict each other. Addressed.** Conclusion 1 states the mechanism is unsettled and the summary table carries "not
+  resolved" verdicts. A different version replaced it, see W3r.
+
+Count: 4 addressed, 5 partly, 0 untouched.
 
 ## Weaknesses
 
-### W1. No related work exists anywhere in the submission
+### W1r. The staleness curve is read as search degradation, and over its first half it is not
 
-`math.md` section 13 lists six references: RLPD, SAC, QWM, Attention Is All You Need, TD3+BC, and one
-Dec-POMDP textbook. `concepts.md` section 19 lists four reading items, three of them the same papers.
-No document has a related work section. For a submission whose claim is novelty against the multi agent
-literature, this alone is disqualifying. The specific gaps:
+`results.md` 16 and `math.md` 10.7 read the fall of the gain as the staleness term of equation (50), and 10.7 reads its slope as the rate `Lambda_1`. Equation
+(50) assumes the baseline does not move with `L`. It does. From `results_tables_seeds.md` the seed mean sampled policy is 53.3, 59.4, 62.2, 60.2, 59.4 at lags 0,
+1, 2, 4, 8 and the seed mean depth 6 arm is 73.0, 73.4, 71.5, 65.7, 59.1. From lag 0 to lag 2 the gain falls 10.5 points, of which the search arm supplies 1.6 and
+the rising baseline supplies 8.9; from lag 2 to lag 8 the gain falls 9.6, of which the search arm supplies 12.4. So 85 percent of the first half of the headline
+fall is the baseline improving, and 14.4 already says why: the forward correction gains with age. The claim in 13.7 that the mjlab baseline is flat across lags
+describes the *mean* policy at 128 environments; the sampled policy rises 8 to 9 points from lag 0 to lag 2 in all three seeds. Two consequences. The largest
+reported gain, +19.8 at lag 0, sits at the one lag the authors elsewhere call off distribution for a fusion trained at lag 1 (`results.md` 6), so its baseline is
+depressed. And the slope of -2.4 points per frame overstates the search's own decline: the same fit on the search arm gives -1.9 and on the baseline +0.4. H2's
+direction survives, because the search arm falls 22.6, 13.0 and 6.3 points across seeds. Its size does not.
 
-- **Imagining teammates in a rollout.** `concepts.md` section 14 calls this "the only piece with no
-  prior implementation to copy". Interactive POMDPs (Gmytrasiewicz and Doshi, 2005) and Interactive
-  POMCP (Hoang and Low, 2013) are the machinery of nesting an estimate of another agent's belief inside
-  your own rollout. Self Other Modeling (Raileanu et al., 2018) is this paper's trick exactly: run your
-  own policy network on your estimate of another agent's input to predict its action.
-- **Learned model search in MARL.** MAZero (Liu et al., ICLR 2024) runs MuZero style search on a learned
-  model with decentralized execution. MAMBA (Egorov and Shpilman, 2022) learns a communicating multi
-  agent world model. MAMBPO (Willemsen et al., 2021) is model based multi robot actor critic. The claim
-  that the multi agent search is "the piece that is actually new" must be argued against these.
-- **The staleness axis.** One step delayed information sharing is a classical information structure with
-  an optimal control solution (Nayyar, Mahajan and Teneketzis, 2011; Oliehoek and Spaan on Dec-POMDPs
-  with delayed communication). Delay aware MARL (Chen et al., 2020) and delayed feedback RL (Walsh et
-  al., 2009) cover the learning side. Rolling a stale estimate forward is a Smith predictor.
-- **The depth and discount results.** Jiang et al. (AAMAS 2015) is the canonical result that the optimal
-  planning horizon and the optimal discount shrink as model error grows. H2 and H3 are that result with
-  a second error source substituted in. The substitution is a contribution. Omitting the original is not.
-- **The headline.** Hamrick et al. (ICLR 2021) found that MuZero style test time search contributes far
-  less at evaluation than assumed, and that the gain depends on value quality. Grill et al. (2020) show
-  MCTS is regularized policy improvement around the prior, which bounds the gain over sampling from that
-  prior. Conclusion 1 is the multi agent restatement of a four year old single agent result.
-- **Depth 0.** The depth 0 arm is a Q argmax over N policy samples, which is QT-Opt (Kalashnikov et al.,
-  2018). On mjlab it supplies 16 of the 24.5 headline points (`results.md` section 13.3), so the largest
-  component of the headline is an uncited 2018 method.
-- **Transfer and the task.** Permutation invariant pooling that transfers across team size is standard:
-  Deep Sets, MAAC (Iqbal and Sha, 2019), deep RL for swarm systems (Huttenrauch et al., 2019), and GNN
-  swarm controllers (Tolstaya et al., 2020), which transfer far past 16 robots. Cooperative transport
-  also has its own literature and benchmarks (Tuci et al., 2018; Wang and Schwager on force amplifying
-  transport), and the submission positions against none of it.
+### W2r. The positive result runs on the contact configuration the fidelity study calls artefactual
 
-### W2. The headline does not beat the one line baseline, by the submission's own test
+`mjlab_fidelity.md` section 4 measures that a cylinder pusher gets one contact point and turns the payload 19 times more than a box pusher, and gives the
+mechanism: one point cannot resist a couple. The success test includes an angle error. Every arm in `results.md` 13 to 19 runs the default `pusher_shape =
+"cylinder"`. So the only task on which search helps is one where yaw is easy to induce by accident and load bearing for success, through an artefact the authors
+have now characterized. That is a live rival reading of conclusion 1: the mjlab critic may rank actions because single point contact makes payload yaw strongly
+action sensitive, while the 2D gated normal force does not. Neither `results.md` nor `next_steps.md` names it.
 
-`math.md` equation (40) calls a difference real when it exceeds 2 SE of the difference. Applied to every
-mjlab search cell against the sampled policy, using the numbers in `results.md` sections 13.3 to 13.7:
+### W3r. Every proposed mediator is eliminated, including the one the text still endorses
 
-| Comparison | Difference | 2 SE | Significant |
-|---|---|---|---|
-| depth 2, lag 1 (69.5 ± 1.8) against sampled lag 1 (65.4 ± 2.2) | +4.1 | 5.69 | no |
-| depth 6, lag 0 (72.7 ± 4.3) against sampled (65.4 ± 2.2) | +7.3 | 9.66 | no |
-| depth 6, lag 1 (71.4 ± 2.5) against sampled (65.4 ± 2.2) | +6.0 | 6.66 | no |
-| depth 6, lag 2 (71.6 ± 2.9) against sampled lag 2 (67.4 ± 0.7) | +4.2 | 5.97 | no |
-| depth 4, lag 0 (69.3 ± 1.3) against sampled (65.4 ± 2.2) | +3.9 | 5.11 | no |
+`results.md` 14.6 closes with "the quantity that does track the search's value across the three snapshots is the world model's contribution measured by the random
+model control". Section 16 then reports that a random model costs 11 to 13 points on seed 0, 6.5 on seed 1, and 5 at depth 2 and 0 at depth 6 on seed 2, while the
+lag 0 gains are +13.5, +30.0 and +15.8. Seed 2 has the smallest model contribution and the second largest gain, and on seeds 1 and 2 the critic argmax alone
+reaches 70 to 80 percent while depth 6 adds nothing, so the last surviving mediator does not track the effect. Section 16 says the split is seed dependent, but
+14.6 is not amended and 14.1 and 14.3 likewise generalize seed 0 properties to "both simulators".
 
-`results.md` section 13.3 states the margin "reaches 2 SE only at the deeper settings (depth 6 at lag 0:
-72.7 ± 4.3 against 65.4 ± 2.2)". That cell gives 7.3 against a 2 SE of 9.66 and does not reach it.
-`next_steps.md` line 47 states "4.1 points above the sampled policy against a 2 SE of about 2.9". The
-correct 2 SE is 5.69; 2.9 is one SE. The only cell that clears the bar is the H3 argmax at beta 0.9, lag
-0 (72.9 ± 0.3 against 65.4 ± 2.2, 2 SE 4.44), which is the winner of a seven way sweep compared against
-a baseline at a different lag on half as many environments. The central positive claim therefore has no
-supported margin over adding exploration noise to the mean action, and cost makes it worse: the deep
-settings where a margin might exist cost 104 ms per step against 28 (`results.md` section 13.4), and
-search cost grows with the square of team size, reaching 474 ms per step at 16 robots (section 9).
+### W4r. `related_work.md` claims novelty for a retracted mechanism, and omits the literature under both headlines
 
-### W3. The central finding is a property of two checkpoints, not of two physics classes
+Internal. Novelty item 2 reads "The observation that the same search hurts on a task whose critic cannot rank the policy's own candidates, with the critic's
+action span measured on both tasks". `results.md` 14.6 and conclusion 1 state the span is not the mediator. The paper's own statement of novelty asserts a
+mechanism its results withdraw. External. The heading "Decentralized execution, communication, and delays" cites no work on delays, although the staleness axis is
+novelty item 1 and the study's strongest result: the delayed sharing information structure of Nayyar, Mahajan and Teneketzis (2011), delay aware MARL and the
+Smith predictor structure of rolling a stale estimate forward all belong there. Jiang et al. (AAMAS 2015), the canonical result that the useful horizon and
+discount shrink as model error grows, is absent, and H2 and H3 are that result with teammate staleness substituted in. Grill et al. (2020) is absent and frames
+the sampled policy baseline. MAZero, MAMBA and MAMBPO are absent, so novelty item 1 stands against no multi agent search baseline. "Cooperative transport" names
+zero references, and conclusion 4's transfer claim is positioned against nothing although size agnostic pooled attention is standard.
 
-Conclusion 1 generalizes from one snapshot per simulator to a claim about quasi static against contact
-physics. The runs differ in at least six ways: contact against a fiat friction threshold, 2.5 m/s
-against 1.5 (`mjlab_port.md` section 2), 24,000 training steps against 12,000 (`methodology.md` section
-5), a scripted ceiling of 83.6 against 99.6 percent, a baseline of 45 against 52, and a 2D task eased
-once after a 6 percent plateau (`results.md` section 12). `next_steps.md` F10 states that the ease
-change or the speed change "can set the sign of H1", prices it at 101 GPU minutes, and did not run it.
+### W5r. The search's margin tracks how weak the policy is, not how good the search is
 
-The mediator is not measured where it matters. The 0.003 span is a 2D number. For mjlab,
-`next_steps.md` line 256 says the critic "must sit above 1, because its argmax alone adds 16 points",
-which infers the mediator from the effect it explains. A one GPU minute probe would measure it. A
-mediation claim with the mediator measured on one of two arms is not a finding. One rival the submission
-never names: the offline buffer comes from a scripted controller that pushes with saturated `u = 1`
-(`design.md` section 4), and the critic trains on a SARSA target over that behavior mixture. A critic
-that learns "larger action is better" from saturated demonstrations helps where crossing a friction
-threshold needs force and hurts in a quasi static model. That explains everything conclusion 1 explains
-and puts the cause in the data and the target, not the physics.
+`results.md` 17 leads with "Depth 6 minus sampled" at +34.1, +29.2 and +14.3 and calls the gain "roughly doubled", while its own conclusion says the ceiling did
+not rise: the depth 6 arm reaches 69.2, 73.1 and 70.2 against the plain seed means of 73.0, 73.4 and 65.7, the policy fell 12 to 25 points and the run cost 82
+minutes against 66. That is a negative result against the complementarity QWM reports, and it reaches neither section 1 nor the conclusions. The pattern is not
+confined to that run. Across the four mjlab agents the depth 6 arm at lag 0 sits in a narrow band, 73.1, 80.2, 65.8 and 69.2, while the sampled policy spans 59.6,
+50.2, 50.0 and 35.1 and the best training evaluations span 48.4, 30.9, 30.1. The search pulls every agent into the same 65 to 80 percent band, so the "gain"
+measures the policy's deficit as much as the search's contribution, and the largest gains belong to the weakest agents. Section 17 also holds an unremarked
+counterexample to H2: its sampled policy rises 21 points from lag 0 to lag 4 while its depth 6 arm stays flat, so in that run the search does not degrade with
+staleness at all.
 
-### W4. H2 and H3 are a noisy argmax over a censored grid
+### W6r. The headline table mixes baselines, and one conflict survives the fixes made during review
 
-On mjlab the best depth is 6, 6, 6, 4 and 6 is the largest depth in the grid (`results.md` section
-13.4). Three of four rows put the argmax on the edge of the axis, so no collapse has been observed. The
-one drop rests on 63.0 ± 1.6 against 60.9 ± 4.3, a difference of 2.1 against a 2 SE of 9.18. Every depth
-from 2 to 6 lies inside the noise of every other depth at every lag.
+The summary table of `results.md` 1 reports the 2D H1 as "-1.6, +0.8, -0.8 points against no search" and the mjlab H1 as "Depth 6 beats the sampled policy". The
+negative result uses the weak baseline and the positive one uses the strong baseline. On 2D the sampled policy beats the mean policy by 12 points (`results.md`
+9), so against the fair baseline the 2D deficit is about -13, not -1. During this review the authors unified the headline on +19.8 ± 8.9 and +14.0 ± 9.0 and fixed
+the training evaluations to 48.4, 30.9, 30.1 in both documents. Conclusion 1 still carries the withdrawn pair, +19.3 ± 6.3 and +14.9 ± 7.4.
 
-Quantify the rule. An argmax over five equally good depths, repeated at four lags, is non increasing
-with a strict drop about 10 percent of the time under pure noise; seven beta levels give about 9
-percent. The study reports four of four rules met across two hypotheses and two simulators, and paired
-seeds make smooth sequences easier still. The rule cannot separate the predicted effect from a flat
-surface. The rules also disagree between documents: `math.md` section 11.2 requires the peak at the
-smallest lag to beat depth 0 by 2 SE, `methodology.md` section 7 drops that clause, and `results.md`
-applies the looser one. For H4, `math.md` section 11.4 requires both differences to be significant while
-`methodology.md` requires only that leader beats independent "at some lag", an uncorrected search over
-four comparisons. On 2D, H2 is confirmed while every search cell sits below its own no search row
-(`results.md` section 6), so "best depth" there means "least harmful depth". A rule that confirms
-whether search helps or hurts is not testing anything.
+### W7r. The bound's one testable prediction is not measured
 
-The honest quantity, depth 1 minus depth 0, is the right one: +2.1, 0.0, -4.2, -13.3 on 2D and +8.3,
-+5.7, +6.0, +5.2 on mjlab. The mjlab sequence is four points inside noise of each other. A stronger
-version needs an uncensored depth axis, a paired per environment bootstrap, a direct measurement of the
-two error terms of equation (37), and one arm the study never ran: oracle teammate actions inside the
-search. Lag 0 is not that arm, because at lag 0 the searcher still imagines teammate actions from an
-estimate of a teammate belief. True teammate actions are the only clean way to separate imagination
-error from model error, and that is the experiment H2 exists to motivate. The direction is also
-unsurprising: more error in a rollout shortens the useful horizon and lowers the optimal weight on
-lookahead, which is Jiang et al. 2015. The new content is that the error source is teammate staleness
-and that it is controllable at test time. That increment is real, small, and not isolated here.
+`math.md` 10.6 says the score gap `g` of equation (48) "costs nothing to record" and calls it "the one instrumentation the study should add". It was not added, so
+equation (48) is unexercised. The step from equation (46), a bound in critic units, to equation (50), a linear model of the gain in success points, is asserted,
+and 10.6 concedes the map from latent error to success points is not modelled, so the agreement in 10.7 between a linear fall and `d^0.67` error growth passes
+through an unproved link. The linear reading also uses three of the five points; across all five the per frame drop is 4.4, 5.6, 1.7 and 1.6, which saturates and
+by 10.7's own taxonomy indicates `Lambda_1 < 1`.
 
-### W5. The H4 refutation carries the same confound as the H4 confirmation
+## What the contribution is, in one paragraph
 
-`results.md` section 8 discards the 2D confirmation because 44 percent of robots in leader mode fall
-back to the plain policy. The mjlab refutation uses the same leader arm with 31 percent falling back
-(`next_steps.md` F7). A confound that invalidates a positive result invalidates the negative one. The
-round robin arm has no fallback and does lose, so "broadcast joint search loses to independent search"
-has support, but round robin changes the election rule and the fallback together, so it tests a
-different hypothesis than H4. The refutation is also near tautological. Every actor was trained to act
-on its own fresh observation, and leader mode imposes a joint action computed from one robot's stale
-estimates of five teammates, which is off distribution for every follower. Losing 28 points under that
-substitution says little about where to spend a decision time budget. A meaningful test matches
-information, not only wall clock: a leader that searches only its own action, or a leader with oracle
-fresh teammate beliefs. F7 costs 8 GPU minutes.
+A team of robots that must move an object together cannot see each other's information instantly. Each robot gets its teammates' reports one or more control
+frames late. This project asks whether it pays, at decision time, for each robot to imagine a few steps of the future with a learned simulator of the world and of
+its teammates, and to pick its action from that imagining rather than straight from its policy. The answer, measured on a MuJoCo contact simulation of six robots
+pushing and carrying a box, is that it pays while the teammate information is fresh and stops paying as that information ages. Across three independently trained
+agents the gain over the right baseline is about 20 points of task success when reports are current, about 14 after one frame and zero after eight, and the
+decline is monotone in all three. A companion bound explains why the gain, not the best depth, is the right thing to report: message age enters the error once, at
+the root of the tree, while simulator error enters once per level, so the two move separately and the best depth is not stable. What the work is not: it is not a
+demonstration that this helps in general, because on a second, simpler simulator of the same task the same code gives no gain, and every explanation offered for
+that difference has been tested and rejected. It is not a competitive cooperative transport system, because a hand written controller scores 83.6 percent where
+the learned system with search reaches 73. And it is not a new algorithm; the search, the critic ranking, the message attention and the permutation invariant
+pooling each come from published work.
 
-### W6. The belief pipeline and the transfer result are the real contribution, and the writeup buries them
+## Who would use these results
 
-The largest effects in the package are not the search. Masking messages costs 36.8 points on 2D and 16.2
-on mjlab (`results.md` sections 9 and 13.7). The forward correction keeps eight frame old messages
-usable. The six robot team runs zero shot at 16 robots. These are several times the search margin and
-they survive dropout. They appear as conclusion 4 of 6. Two problems stop even this from being clean.
-First, the transfer numbers confound generalization with task easing, as the authors concede: "More
-robots also mean more force against the friction threshold, which is part of the gain" (`results.md`
-section 9). On 2D the 16 robot team scores 95.6 percent against 50.3 for the training team. A transfer
-target far easier than the training condition is not a transfer result until a per team size difficulty
-control exists; `next_steps.md` F11 answers it in 4 GPU minutes and did not run. Second, the components
-are standard, so the novelty is the assembly, and the assembly cannot be judged without W1.
+The authors state the project is for learning rather than publication, so the question is reuse, not citation.
 
-### W7. The nine training changes are engineering and rediscovery, not a method
-
-`results.md` section 2 presents nine changes as part of the result. Most are rediscoveries. Dropping
-entropy from the backup is an existing RLPD flag. The cloning term on the offline half is TD3+BC, cited.
-The SARSA target on the recorded next action is the one step behavior value estimate of Brandfonbrener
-et al. (2021). Target copies of the encoder plus a detached critic and an auxiliary decoder is SAC-AE
-and its descendants. Clamping the target to a known reward range is common practice. The evidence is
-also single path: each change followed one failed run at one seed, and nothing measures the seed spread,
-so nothing separates "this change was needed" from "this run was unlucky" (`next_steps.md` F4, F12).
-
-The useful reading, that published RLPD does not train on a sparse reward partially observed multi agent
-task without four additions, is a practitioner negative result. It is not isolated, and one addition
-threatens the headline. The SARSA target makes the critic value a behavior mixture, which is the most
-likely reason it does not rank the learned policy's candidates. If `next_steps.md` F8 comes back
-positive, conclusion 1's physics explanation becomes an algorithm explanation and the central claim
-inverts. That experiment costs 31 GPU minutes.
-
-### W8. The testbed does not yet support claims about contact physics
-
-`mjlab_port.md` sections 2 and 5 record a kinematic latch written every substep, a fiat central
-unloading force bounded at 80 percent of the weight after an earlier version launched the box off the
-floor, at most one contact point for a cylinder against a box, no robot to robot collision, and robots
-that are cylinders on velocity servos. This is a better testbed than the 2D model, but the two features
-most likely to drive the critic's action sensitivity, the friction threshold and the latch, are still
-scripted in both simulators, so the difference the paper names is the one it has least isolated.
-Separately, the learner reaches 45 to 50 percent while a scripted centralized controller reaches 83.6 to
-99.6. A learned system at half the success rate of a hand written controller is not a contribution to
-cooperative transport, so the value must rest on the mechanism study, which returns to W2 through W5.
-
-### W9. The conclusions and the next steps contradict each other
-
-`results.md` section 11 asserts six conclusions in the indicative mood. `next_steps.md` names the
-strongest rival for each, and for four of six the rival is untested and the decisive experiment costs
-under 25 GPU minutes. A reader of `results.md` alone receives claims the authors do not believe. Restate
-conclusions 1, 2, 3, and 4 as the hypotheses they still are.
+1. **An engineer weighing decision time search on a delayed multi robot system.** The one transferable rule: search is worth its compute while message age stays
+   under a few control steps, and the gain decays to zero by about eight. `results.md` 13.4 prices it at 104 ms per step at depth 6 against 29 without. The decay
+   rate will not transfer. The shape will.
+2. **Anyone building a contact rich pushing task in MuJoCo Warp.** `mjlab_fidelity.md` is the most directly reusable document here: the single contact point
+   limit, the 19 times yaw difference, the per world `eq_active` and `eq_data` verification against the source, and the unbounded lift bug that silently launched
+   the payload.
+3. **Someone learning how to interrogate a result.** The control suite is a template: a random world model, a random scorer, a decoded state scorer, a random
+   candidate, a leader with no fallback, a noisier demonstration buffer, a momentum variant, a reward hacking audit, a reproducibility floor, and a rerun that
+   flipped the authors' verdict.
+4. **A MARL researcher.** Still cannot use the numbers: the task is bespoke, no MAPPO, QMIX or MAZero comparison exists, and absolute success stays below the
+   scripted controller. The negative results are the part most likely to save someone time.
 
 ## Questions for the authors
 
-1. What is the action signal to noise ratio r on the mjlab snapshot? It costs under one GPU minute and
-   the whole mediation claim of conclusion 1 depends on it.
-2. Does any cell beat the sampled policy by more than 2 SE of the difference under equation (40)? My
-   arithmetic on your tables says no. If you disagree, name the cell and show the computation.
-3. What does the search do against oracle teammate actions, meaning the true actions taken at that step?
-   Without that arm H2 cannot separate teammate imagination error from model error.
-4. On 2D the critic argmax picks the mean action 1.4 percent of the time against a chance rate of 11
-   percent, and prefers the candidate farthest from the mean. A flat critic gives chance rates; an anti
-   correlated selection is a biased critic. Is the critic increasing in action magnitude, as saturated
-   scripted demonstrations would teach it? Relatedly, under `target_policy = "data"` the critic values a
-   behavior mixture, so why should it rank the learned policy's own candidates in either simulator?
-5. What happens at depth 8 or 12 on mjlab? Three of four rows have the argmax on the grid edge.
-6. What does the scripted controller score at 9, 12, and 16 robots on mjlab? Until that exists, transfer
-   cannot be separated from larger teams making the task easier.
-7. How do you position the teammate imagination step against Interactive POMDPs, Interactive POMCP, Self
-   Other Modeling, MAZero, and MAMBA?
-8. How do H2 and H3 differ from Jiang et al. (2015) beyond substituting a new error source, and what is
-   the multi agent content of conclusion 1 beyond Hamrick et al. (2021)?
-9. What is the seed spread of best evaluation success? Every cross run claim rests on one seed.
-10. Why does the leader arm keep its fallback in the mjlab refutation, when you discard the 2D
-    confirmation for exactly that reason?
-11. Two documents state different decision rules for H2 and H4. Which set was fixed before the runs?
-
----
+1. What does the depth 6 arm's own success do across lags, beside the gain? Does equation (50) survive a baseline that moves with `L`? And does novelty item 2 of
+   `related_work.md` stand, or its retraction in `results.md` 14.6?
+2. What does H1 give with `pusher_shape = "box"`? Your fidelity study says the default turns the payload 19 times more through a single contact artefact, and yaw
+   is in the success test.
+3. Does any measured quantity predict whether search helps on a new snapshot? Seed 2 has a zero model contribution at depth 6 and the second largest gain.
+4. Would you restate conclusion 5 as "search pulls every agent to 65 to 80 percent regardless of its policy", which the four agents support, rather than as a gain
+   of 19.8 points? Why do the two simulators use different baselines in the section 1 table?
+5. In `results.md` 17 the sampled policy rises 21 points from lag 0 to lag 4 while depth 6 stays flat. Does that run refute H2 in absolute terms?
+6. How do you position the staleness axis against the delayed sharing literature, and H2 and H3 against Jiang et al.? Does the 16 robot transfer gain survive a
+   per team size difficulty control? Will you record the score gap `g` that `math.md` 10.6 calls free?
 
 ## Limitations
 
-The authors state their limitations well (`results.md` section 12, `methodology.md` section 8,
-`mjlab_port.md` section 5, and all of `next_steps.md`). My objection is not that they are hidden. It is
-that several are load bearing for the conclusions above them, and those conclusions are written as if
-they were not. One seed, one selected checkpoint per simulator, a censored depth grid, an unmeasured
-mediator, a confounded simulator comparison, and a headline with no supported margin over a stochastic
-policy are not caveats on a result. Together they are the reason there is not yet a result. The authors
-already designed the 36 GPU minutes that would settle four of six conclusions, which makes the current
-state a choice rather than a constraint.
-
-On audience, which a significance review must answer: as written, nobody outside the project can use
-these numbers. A multi robot practitioner cannot transfer a result from a kinematically latched box to a
-real team. A MARL researcher needs seeds and a standard benchmark. The one transferable item is a
-screening rule, which is to measure the critic's action span over the policy's own samples before paying
-for test time search, and the submission proposes that quantity in `next_steps.md` without measuring it.
-Measure r on both snapshots and the paper acquires its first genuinely useful reader.
+The authors report their limitations well and now report them in the right places. `results.md` 12 names which sections are one seed, conclusion 1 states the
+mechanism is unsettled, 13.8 publishes the reproducibility floor, and `math.md` 10.6 lists which constants cannot be measured. My objection is narrower than in
+round 1. Three limitations are load bearing and are not stated where the claim is made: the fair baseline is not flat in lag, every arm runs the cylinder pusher
+the fidelity study calls artefactual, and the body of section 14 states mechanisms section 16 retracts. The status note at the top of `next_steps.md` is dated
+2026-09-12 and covers items 2 to 8 only, so it omits the three seeds, the collection run, the momentum variant and the bound.
 
 ## Ethics
 
 No concerns. Simulation only, no human subjects, no data release, no dual use surface.
 
----
-
 ## Scores
 
-- **Soundness: 2 (fair).** The implementation and the paired sweep protocol are sound. The inference is
-  not: one seed and one selected checkpoint per simulator, a significance claim that fails the paper's
-  own test, a mediator measured on one of two arms, a decision rule that passes on noise roughly one
-  time in ten, and a two simulator comparison that differs in six ways while the conclusion names one.
-- **Presentation: 2 (fair).** The prose, the equation numbering, the separation of bound from heuristic,
-  and the replication recipe are above the venue norm. Two things the NeurIPS presentation criterion
-  covers directly hold the score down: no related work section in any document, and a conclusions
-  section that asserts claims the next steps document reports as untested.
-- **Contribution: 2 (fair).** The teammate imagination step, the staleness axis, and the belief pipeline
-  are real work. Each has close prior art the submission does not engage, and the two most defensible
-  results are presented as supporting material and lack their own controls.
-- **Overall: 3 (reject).** Below threshold. The negative 2D result and the honest reporting deserve
-  publication eventually, but the positive claim does not survive its own statistics and the positioning
-  against prior work does not exist.
-- **Confidence: 4.** I recomputed every significance claim I challenge from the submission's own tables
-  and equation (40). I did not read the code, so I cannot exclude an implementation defect in either
-  direction, and the submission notes that no experiment validates `swarm/search.py` against a scorer
-  that cannot be flat (`next_steps.md` F2).
+- **Soundness: 3 (good).** Up from 2. The statistics now fit the claims: paired bootstraps over first episodes, per batch seeding, a published reproducibility
+  floor, a correct standard error of the difference, an argmax free statistic, three seeds per simulator, and controls for the model, the scorer, the candidate
+  and the leader fallback. Below 4 for W1r, W2r and W5r.
+- **Presentation: 3 (good).** Up from 2. `related_work.md` exists, the conclusions no longer assert what the next steps report as untested, and `math.md` section
+  13 marks its assumptions. Against it: `results.md` runs 1 to 10, 13 to 19, then 11 and 12, section 13 of `math.md` labels its subsections 10.1 to 10.7, and
+  sections 14.1, 14.3 and 14.6 carry claims later sections retract.
+- **Contribution: 3 (good).** Up from 2. A three seed, five lag, argmax free measurement of a decision time search gain decaying with communication delay, a bound
+  that predicts which statistic is stable, four clean negative results and a reusable simulator fidelity study. Below 4 because the mechanism is unresolved, the
+  effect appears on one task, and every component is prior work.
+- **Overall: 5 (borderline accept).** Up from 3. In round 1 I wrote that if the search cleared the sampled policy and the random candidate by more than 2 SE at
+  two or more lags, the headline is real and I move to 5. It does, at lags 0 and 1, at 256 environments and 5 batches, in 3 of 3 seeds. As a workshop paper or a
+  technical report this is clearly above the bar. As a main track paper it is not: the central claim has no supported mechanism and its strongest result is
+  positioned against no prior work.
+- **Confidence: 4.** I recomputed the fair H1 standard errors, the staleness decomposition and the least squares slopes from the committed tables, but did not
+  read the code.
 
----
+## What changed my score, and what would change it again
 
-## What would change my score
+Round 1 rested on one arithmetic finding and one absence: no cell beat the sampled policy at 2 SE, and no document positioned the work against prior art. The
+authors ran the arm at the size I asked for, on three seeds, with a paired bootstrap, and it clears. They also did the harder thing. They reran a sweep with a
+fixed seeding bug, watched their own H2 and H3 verdicts flip to "not resolved", published the flip, and replaced the statistic with one their new bound actually
+predicts. Three explanations for the 2D negative were tested and all three failed, which cost them their mechanism and which they reported anyway.
 
-1. **Beat the sampled policy.** Run `next_steps.md` F1 at 256 environments and 6 batches, with the
-   random candidate arm and the tuned noise arm. If the search clears both by more than 2 SE at two or
-   more lags, the headline is real and I move to 5. If it does not, rewrite the paper around the
-   negative result and the belief pipeline, which I would consider at 4.
-2. **Measure the mediator on both arms and run the controls.** F1, F2, F3, F9, and the r probe cost
-   under 45 GPU minutes together and turn conclusion 1 into a measured mediation. Add F8 to exclude the
-   SARSA target as the cause of the 2D flatness. That is worth one point.
-3. **Write the related work section.** At minimum: I-POMDP and Interactive POMCP, Self Other Modeling,
-   MAZero and MAMBA, the delayed sharing literature, Jiang et al. 2015, Hamrick et al. 2021, Grill et
-   al. 2020, QT-Opt, and the cooperative transport survey, each with one sentence saying what this work
-   does that they do not. This is not a bonus. Without it I cannot verify that any claim is new.
-4. **Three seeds and an uncensored depth axis.** F4 plus F6 cost 226 GPU minutes and convert every cross
-   run claim from anecdote to measurement. If the sign of H1 agrees across three seeds per simulator and
-   the depth falloff moves with lag, H2 becomes a finding and I would support acceptance.
+What would move it further. First, decompose the staleness curve: report the depth 6 arm's own success against lag beside the gain. If the search arm alone still
+declines monotonically in 3 of 3 seeds, H2 becomes a property of the search rather than a difference of two moving lines, and I go to 6. Second, rerun the fair H1
+at lags 0 and 1 with `pusher_shape = "box"`, which is four cells; if the gain survives, conclusion 1 stops depending on a single contact point artefact. Third,
+close the four citation gaps, starting with the delayed sharing literature and Jiang et al. 2015, and fix or withdraw novelty item 2 of `related_work.md`. Fourth,
+record `g` and test equation (48). What would move it down: if the box pusher arm reverses the mjlab H1, conclusion 1 is an artefact of one contact point and the
+only positive result goes with it. I would return to 4.
 
-Items 1 and 2 cost about one hour of GPU time on hardware the authors already have. The study is one
-honest hour away from knowing whether it has a result. I encourage them to run it and resubmit.

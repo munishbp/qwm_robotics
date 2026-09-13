@@ -36,6 +36,13 @@ and QMIX (Rashid et al. 2018) are the standard centralized training, decentraliz
 baselines; this study trains per robot critics on per robot beliefs with a shared team reward
 and does not use a centralized critic.
 
+## Delayed and stale information in multi agent control
+
+Delayed communication is a classic setting in networked control and in multi agent
+reinforcement learning with communication delays; this study does not survey that literature and
+cites none of it, which is a gap a paper would have to close. What the study measures is specific
+to the decision time search: the age of a teammate's latent at the root of the tree.
+
 ## Imagining teammates
 
 Rolling a teammate's stale latent forward and imagining its action from the shared policy is a
@@ -56,8 +63,9 @@ construction so that no single type can finish alone.
 
 1. The QWM search with imagined teammates, and the measurement that its value falls with
    teammate staleness while the baseline does not (mjlab, `results.md` 13.4).
-2. The observation that the same search hurts on a task whose critic cannot rank the policy's own
-   candidates, with the critic's action span measured on both tasks.
+2. The observation that the same search does not help on the quasi static task in three seeds
+   and a momentum variant, with three candidate explanations (demonstration quality, the critic's
+   action span, momentum) measured and eliminated, and the mechanism left open.
 3. The refutation of leader elected broadcast search against independent search on both tasks.
 4. A recipe, with its failure history, for getting an RLPD style learner to train on a sparse
    reward, partially observed, cooperative task within a small budget.
