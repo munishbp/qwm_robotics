@@ -660,6 +660,29 @@ snapshots is the world model's contribution measured by the random model control
 that search helps where the rollout tells the critic something about action consequences that
 the root belief does not, and the 2D task's quasi static rollouts tell it little.
 
+## 15. Reward hacking audit
+
+`scripts/audit.py` (data in `results/audit.json` and `runs/mjlab/results/audit.json`) checks the
+ways a result of this kind is usually hollow.
+
+| Check | 2D | mjlab |
+|---|---|---|
+| Zero action policy success | 0.0 | 0.0 |
+| Random action policy success | 0.0 | 0.0 |
+| Episodes successful at reset or within 5 steps under the trained policy | 0.0 | 0.0 |
+| Largest payload displacement in one step under the trained policy | 0.097 m (friction model ceiling 0.105) | 0.34 m (3.4 m/s, an 8 kg box a 30 N push accelerates at 2.75 m/s²; it slides on momentum faster than the 2.5 m/s robots) |
+| NaN in the payload state | none | none |
+
+Static checks on the test time path: the search reads each robot's own message table and, for the
+decoded scorer control only, the goal relative to the robot from its own observation; the full
+observation is read only in the centralized mode; the decoder target enters the training losses
+only; the evaluation counts terminations only, scores the first episode of every env, and uses env
+seeds 1000 and up against training seeds 0 to 2; the torch RNG is seeded per batch.
+
+One observation from the audit that is not a hack but is worth knowing: the mjlab policy sometimes
+launches the payload, which then slides at up to 3.4 m/s ahead of the robots. The success test is
+on the pose at rest or in motion alike, so a payload that slides through the goal pose counts.
+
 ## 11. Conclusions
 
 1. **Test time world model search helps a decentralized heterogeneous team when the rollout

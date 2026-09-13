@@ -1,0 +1,29 @@
+{
+  "sim": "2d",
+  "rows": [
+    {
+      "policy": "zero actions",
+      "success": 0.0,
+      "success_at_reset": 0.0,
+      "success_in_first_5_steps": 0.0,
+      "max_payload_step_m": 0.0,
+      "nan": false
+    },
+    {
+      "policy": "random actions",
+      "success": 0.0,
+      "success_at_reset": 0.0,
+      "success_in_first_5_steps": 0.0,
+      "max_payload_step_m": 0.0,
+      "nan": false
+    },
+    {
+      "policy": "trained mean policy",
+      "success": 0.53125,
+      "success_at_reset": 0.0,
+      "success_in_first_5_steps": 0.0,
+      "max_payload_step_m": 0.09666092693805695,
+      "nan": false
+    }
+  ]
+}
