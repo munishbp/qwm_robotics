@@ -708,8 +708,17 @@ of the gain (+19.3, +14.9, +5.9) as linear in the lag, in agreement with the mea
 error growth.
 
 **H1 against the fair baseline holds across seeds.** Depth 6 search beats the sampled policy in
-3 of 3 seeds at lags 0 and 1, by 19.3 ± 6.3 and 14.9 ± 7.4 points. **H2 holds in the mean and
-not in every seed:** the gain falls to 5.9 ± 7.9 at lag 4 with the sign agreeing in 2 of 3 seeds.
+3 of 3 seeds at lags 0, 1 and 2, by 19.3 ± 6.3, 14.9 ± 7.4 and 9.3 ± 8.6 points. **H2 holds as a
+curve:** with lags 2 and 8 added (`runs/mjlab*/results/lag_curve.json`, 256 envs and 5 batches),
+the mean gain is +19.3, +14.9, +9.3, +5.9, −0.3 at lags 0, 1, 2, 4, 8. It falls monotonically
+and reaches zero at eight frames. The sign agrees in 3 of 3 seeds up to lag 2 and in 2 of 3 at
+lags 4 and 8. A least squares line through the five points has a slope of about −2.4 points per
+frame of staleness. `figures/paper/gain_vs_staleness.png` draws it per seed with the mean band.
+
+**The world model's contribution by seed** (random model control, section 14.2 protocol): a
+random model costs 11 to 13 points on seed 0, 6.5 on seed 1, and 5 at depth 2 and 0 at depth 6
+on seed 2. The rollout helps in every seed at depth 2 and its size varies threefold. The critic
+span ratio is above 1 on all three seeds (1.27, 1.21, 1.08).
 The seed to seed spread of a single arm is 5 to 10 points, which is the number every earlier
 "confirmed" verdict from one snapshot should be read against.
 
