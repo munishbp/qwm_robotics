@@ -14,7 +14,7 @@ main finding.
 
 | Hypothesis | 2D simulator | mjlab |
 |---|---|---|
-| H1: search improves the decentralized baseline | Refuted. Depth 2: 43.2 against 52.3 for the mean action | Confirmed. Depth 6 beats the sampled policy in 3 of 3 seeds: +19.3 ± 6.3 at lag 0, +14.9 ± 7.4 at lag 1 (section 16) |
+| H1: search improves the decentralized baseline | Refuted across 3 seeds: the best search cell is −1.6, +0.8, −0.8 points against no search at lag 0 (section 19) | Confirmed. Depth 6 beats the sampled policy in 3 of 3 seeds: +19.3 ± 6.3 at lag 0, +14.9 ± 7.4 at lag 1 (section 16) |
 | H2: best depth shrinks with staleness | Rule met (4, 2, 0, 0) but every search cell is below no search | Best depth rule unstable across reruns (6, 6, 6, 4 then 6, 2, 4, 1); the gain of search falls with staleness in every run and seed (+19.3, +14.9, +5.9 over the sampled policy at lags 0, 1, 4 across 3 seeds) |
 | H3: best discount shrinks with staleness | Rule met (1.0, 0.7, 0.3, 0.0), all below no search | Rule unstable across reruns; imagined value (beta above 0) helps at every lag and the gap shrinks at lag 4 |
 | H4: elected leader beats independent search at matched compute | Rule met, but by a fallback to the plain policy | Refuted. Independent 69.0 against leader 41.1 and round robin 43.8 |
@@ -783,6 +783,33 @@ applies a gated force along the inward normal only while `u > 0` and within a co
 the payload stops the moment the force stops. The mjlab robots also accelerate through a servo.
 The study did not separate these two.
 
+## 19. Three seeds on both simulators, H2 as the gain over no search
+
+Two more 2D agents (seeds 1 and 2, 12,000 steps) and the H2 sweep on all three seeds of each
+simulator (128 envs, 3 batches, per batch seeding). The entry is the best search cell minus the
+no search cell, in points.
+
+| Simulator, seed | Lag 0 | Lag 1 | Lag 2 | Lag 4 |
+|---|---|---|---|---|
+| 2D, seed 0 | -1.6 | -4.7 | -11.5 | -10.2 |
+| 2D, seed 1 | +0.8 | +0.5 | -1.3 | -4.9 |
+| 2D, seed 2 | -0.8 | -1.3 | +2.3 | +4.2 |
+| mjlab, seed 0 | +36.2 | +27.9 | +26.6 | +17.4 |
+| mjlab, seed 1 | +62.0 | +53.1 | +52.3 | +44.0 |
+| mjlab, seed 2 | +46.4 | +43.8 | +46.1 | +46.1 |
+
+On 2D the search is within a few points of no search in seeds 1 and 2 and clearly below it in
+seed 0, so the 2D verdict across seeds is "search does not help", not "search hurts by nine
+points". On mjlab the gain over the mean policy is large in every seed (44 to 62 points in seeds
+1 and 2, whose mean policies are weak at 30 to 36 percent) and it falls with staleness in two of
+three seeds. The 2D scorer controls repeat in every seed: the random candidate matches the
+sampled policy and the critic argmax is below both (seed 1: 58.3, 57.8, 47.7; seed 2: 53.9,
+54.9, 50.0).
+
+The fair comparison against the sampled policy across seeds is section 16 and the staleness
+curve is `figures/paper/gain_vs_staleness.png`; the gain over no search by seed is
+`figures/paper/gain_over_no_search_by_seed.png`.
+
 ## 11. Conclusions
 
 1. **Test time search helps a decentralized heterogeneous team on the contact physics task and
@@ -827,8 +854,9 @@ The study did not separate these two.
 
 - One training seed for the snapshot and one for each baseline. Cell to cell comparisons within a
   sweep are paired on the same snapshot and the same first episodes, so they are the reliable part.
-- The mjlab sweeps (sections 13.4 to 13.7) are a single seed; the fair H1 arms have three seeds
-  (section 16). The 2D study is a single seed per task version. Its transfer and
+- Sections 3 to 10 and 13 report seed 0 of each simulator. Sections 16 and 19 report three seeds
+  per simulator for the fair H1 arms and the H2 gain; the remaining sweeps (H3, H4, robustness,
+  transfer) are one seed each. Its transfer and
   ablation cells use 128 envs. The mjlab physics simplifies latching (kinematic attachment and a
   central unloading force bounded at 80 percent of the weight) and gives a cylinder against a box
   at most one contact point.
