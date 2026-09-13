@@ -639,7 +639,211 @@ The design fixes every constant this document uses. The H1 protocol runs depth $
 at lag 1, so both no search arms are reported. The decoder target divides the relative payload
 position by $A$, so equation (23) reports metres. No item remains open.
 
-## 13. References
+## 13. A bound on the staleness effect
+
+This section replaces the heuristic argument of section 10 with a stated bound. It was written
+after the results of `results.md` sections 14 and 16 and it is checked against them at the end.
+
+This section replaces the heuristic of the earlier draft with one stated bound and one proof. The bound separates the
+error that grows with tree depth from the error that grows with message staleness. That separation is the content of H2.
+
+**Notation.** $L$ keeps its meaning from section 1, the staleness of a message. Every Lipschitz constant carries a
+subscript: $L_f$, $L_a$, $L_\pi$, $L_u$, $L_Q$. The reference for every error is the **true** latent, which is the
+encoding of the observation the environment produces.
+
+#### 10.1 Assumptions
+
+**A1 (Lipschitz dynamics).** Treat $f_\psi$ as a function of the latent and the joint action $\mathbf{a}$, with the
+context $c$ of equation (21) computed from $\mathbf{a}$. Then $\|f_\psi(z,\mathbf{a}) - f_\psi(z',\mathbf{a}')\|
+\le L_f\|z-z'\| + L_a\|\mathbf{a}-\mathbf{a}'\|$. The constant $L_a$ absorbs $\mathrm{Lip}(h_\psi)$ and the
+$1/|\mathcal{N}_i|$ of the mean, so a joint action gap enters once and not once per teammate.
+
+**A2 (Lipschitz policy mean).** $\|\mu_\theta(b) - \mu_\theta(b')\| \le L_\pi\|b-b'\|$.
+
+**A3 (Lipschitz fusion).** Hold the age and the type features fixed; design section 7 fixes them for the whole roll and
+for every depth, so the fusion is a function of the latents alone. Then $\|\mathrm{fuse}(z_0,\{z_s\}) -
+\mathrm{fuse}(z_0',\{z_s'\})\| \le L_u(\|z_0-z_0'\| + \sum_s\|z_s-z_s'\|)$. The self only fusion of equation
+(25) is the case with no teammate term.
+
+**A4 (one step model error).** $\mathbb{E}\|f_\psi(e_t,\mathbf{a}_t) - e_{t+1}\| \le \varepsilon_f$ on the data
+distribution. Every bound below is an expectation bound over the same measure.
+
+**A5 (action deviation).** There is a $\sigma_a$ with $\mathbb{E}\|\tilde{\mathbf{a}}^{(m)}(z^*) - \mathbf{a}_{t+m}\|
+\le \sigma_a$ for every $m \le L_{\max}$, where $\tilde{\mathbf{a}}^{(m)}(z^*)$ is the joint action argument the
+searcher builds from the **true** latents. It carries the sampling noise of the tanh Gaussian, the self only fusion that
+equation (25) uses in place of the sender's real fusion, and the frozen context $c^{\text{tab}}_i$. A5 asserts their sum
+stays bounded over the roll. It is an assumption.
+
+**A6 (off distribution transfer).** A4 holds along the trajectories the tree visits. The tree rolls imagined states, so
+this is the weakest assumption in the list, and section 10.6 says so.
+
+**A7 (Lipschitz critic).** $|\bar{Q}(b,a) - \bar{Q}(b',a')| \le L_Q\|b-b'\| + L_{Q,a}\|a-a'\|$.
+
+#### 10.2 Result 1: the error of a rolled teammate estimate
+
+Write $\Delta_j^{(m)} = \|\hat{z}_j^{(m)} - e_{j,t_j+m}\|$ for the gap between robot $i$'s roll of equation (25) and
+teammate $j$'s true encoding. Define
+
+$$\Lambda_1 = L_f + L_a L_\pi L_u, \qquad \iota = \varepsilon_f + L_a\sigma_a, \qquad
+G_\Lambda(n) = \sum_{p=0}^{n-1}\Lambda^p = \begin{cases} n & \Lambda = 1\\[2pt]
+\dfrac{\Lambda^n - 1}{\Lambda - 1} & \Lambda \ne 1\end{cases} \tag{41}$$
+
+**Claim.** Under A1 to A5, $\Delta_j^{(0)} = 0$ and
+
+$$\Delta_j^{(m+1)} \le \Lambda_1\Delta_j^{(m)} + \varepsilon_f + L_a\sigma_a\,\mathbb{1}[m \ge 1]
+\quad\Longrightarrow\quad
+\Delta_j(L) \le \Lambda_1^{\,L-1}\varepsilon_f + L_a\sigma_a\,G_{\Lambda_1}(L-1)
+\le \iota\,G_{\Lambda_1}(L) \tag{42}$$
+
+**Proof.** The roll starts at the true encoding $e_{j,t_j}$, so $\Delta_j^{(0)} = 0$. Step $m$ applies $f_\psi$ to
+$\hat{z}_j^{(m)}$ with the searcher's action argument. The truth applies $f_\psi$ to $e_{j,t_j+m}$ with the realized
+joint action and adds a residual that A4 bounds by $\varepsilon_f$. A1 splits the difference into a latent part
+$L_f\Delta_j^{(m)}$ and an action part $L_a\|\tilde{\mathbf{a}}^{(m)} - \mathbf{a}_{t_j+m}\|$. Split the action part
+at the true latent: A5 bounds the first half by $\sigma_a$, and A2 with A3 bound the second half by $L_\pi L_u
+\Delta_j^{(m)}$, which joins the latent part and gives $\Lambda_1$. At $m=0$ the message carries the recorded action, so
+the action gap is zero and only $\varepsilon_f$ enters. Unrolling gives the middle form, and $\varepsilon_f \le \iota$
+gives the right hand form. $\blacksquare$
+
+This replaces the heuristic $\kappa_{\text{obs}}L$ of the earlier draft. The observations that teammate $j$ made and
+robot $i$ never saw are already inside $e_{j,t_j+m}$, and $\varepsilon_f$ is the price of failing to predict them.
+
+**The no correction case.** With `roll_messages=False` the estimate is $e_{j,t_j}$, so the error is the true $L$ step
+drift $\|e_{j,t_j} - e_{j,t}\|$, with no $\varepsilon_f$ and no $\sigma_a$. Equation (42) predicts that forward
+correction wins whenever $\iota G_{\Lambda_1}(L)$ is below that drift. The open loop tables measure both sides: latent
+MSE is the rolled error and copy latent MSE is the drift, and the model is below copy at every horizon on both simulators
+(0.0220 against 0.0376 at horizon 8 on 2D, 0.1028 against 0.1673 on mjlab). Section 14.4 reports the success rate shadow
+of that fact, 5 to 8 points on mjlab.
+
+#### 10.3 Result 2: the error of the searching robot's own belief at depth $d$
+
+Fix one candidate path. The reference is the true rollout: robot $i$ plays the same own actions and the teammates act as
+they really would. Write $\delta^{(d)} = \max_k\|z_k^{(d)} - z_k^{*(d)}\|$ over the $K$ slots of the searcher's
+table, and define the tree rate
+
+$$\Lambda_K = L_f + K\,L_a L_\pi L_u \tag{43}$$
+
+**Claim.** Under A1 to A6, $\delta^{(0)} \le \Delta(L)$ and
+
+$$\delta^{(d+1)} \le \Lambda_K\delta^{(d)} + \iota
+\quad\Longrightarrow\quad
+\delta^{(d)} \le \underbrace{\Lambda_K^{\,d}\Delta(L)}_{\text{staleness, grows with } L}
++ \underbrace{\varepsilon_f G_{\Lambda_K}(d)}_{\text{model, grows with } d}
++ \underbrace{L_a\sigma_a G_{\Lambda_K}(d)}_{\text{action imagination, grows with } d} \tag{44}$$
+
+**Proof.** At the root the own slot holds the fresh encoding $e_i$, so its error is zero, and every teammate slot holds
+a rolled estimate that equation (42) bounds by $\Delta(L)$; the maximum is $\Delta(L)$. One level of `_roll_joint`
+applies $f_\psi$ to every slot with the joint action built from the current estimates. The own action is the candidate
+and is identical in both rollouts, so the joint action gap comes from the teammate slots only. For teammate $j$, A3
+bounds the fusion gap by $L_u K\delta^{(d)}$, A2 turns it into an action gap $L_\pi L_u K\delta^{(d)}$, and A5 adds
+$\sigma_a$ at the true latent. A1 multiplies the action gap by $L_a$ and adds $L_f\delta^{(d)}$, and A6 adds
+$\varepsilon_f$. Collecting the coefficients gives $\Lambda_K$ and $\iota$, and unrolling gives the closed form.
+$\blacksquare$
+
+The staleness term enters **once**, at the root, and the tree then transports it. It does not enter again at each depth,
+because a teammate estimate receives no new information inside the tree and its age feature stays at the root value.
+Design section 7 states this and `_search_rows` implements it: `featp` is expanded, never recomputed. The non expansive
+case is the clean statement:
+
+$$\Lambda_K = 1 \qquad\Longrightarrow\qquad
+\delta^{(d)} \le \Delta(L) + d\big(\varepsilon_f + L_a\sigma_a\big) \tag{45}$$
+
+The staleness term is a constant offset in $d$. The model term is a slope in $d$ and does not depend on $L$. That is the
+separation this section exists to state.
+
+#### 10.4 Result 3: the score error and the preserved argmax
+
+Let $V(a)$ be the score of equation (29) computed along the true rollout, that is, the score the same critic returns with
+a perfect model and perfect teammate estimates. The bound controls the search's imagination error, not the critic's own
+value error.
+
+$$\big|S(a) - V(a)\big| \le B(D,\beta,L) = C_Q\,
+\frac{\sum_{d=0}^{D}\beta^d\delta^{(d)}}{\sum_{d=0}^{D}\beta^d},
+\qquad C_Q = L_u K\big(L_Q + L_{Q,a}L_\pi\big) \tag{46}$$
+
+**Proof.** At depth $d$ the search reads $\bar{Q}$ at $b^{(d)} = \mathrm{fuse}(z^{(d)})$ with the action
+$\mu_\theta(b^{(d)})$, except at $d=0$ where the action is the candidate and is common to both rollouts. A3 bounds the
+belief gap by $L_u K\delta^{(d)}$, A2 turns it into an action gap $L_\pi L_u K\delta^{(d)}$, and A7 converts both into
+a gap in $\bar{Q}$, which gives $C_Q$. Equation (29) is a convex combination with weights
+$\beta^d/\sum_{d'}\beta^{d'}$, and the triangle inequality passes the per term bound through it. $\blacksquare$
+
+Note $\delta^{(0)} = \Delta(L)$ and not zero. The earlier draft asserted $\delta_0 = 0$ because the root belief comes
+from a real observation. That holds for the own slot only. The teammate slots of the root belief are stale, so even the
+$D=0$ critic argmax carries a staleness bias, and the $D=0$ column of the H2 grid should fall with $L$; it does, from
+61.7 to 56.5 on mjlab. Substituting equation (45) into equation (46) gives the form to use:
+
+$$\Lambda_K = 1 \ \Longrightarrow\
+B(D,\beta,L) \le C_Q\big[\Delta(L) + \iota\,\bar{d}(D,\beta)\big],
+\qquad \bar{d}(D,\beta) = \frac{\sum_{d=0}^{D} d\,\beta^d}{\sum_{d=0}^{D}\beta^d} \tag{47}$$
+
+**Claim (preserved argmax).** Let $a_1 = \arg\max_{a\in A_{\text{root}}}V(a)$ and let $g = V(a_1) - \max_{a\ne a_1}V(a)$ be the score gap between the best and the second best candidate.
+
+$$g > 2\,B(D,\beta,L) \qquad\Longrightarrow\qquad
+\arg\max_{a\in A_{\text{root}}}S(a) = a_1 \tag{48}$$
+
+**Proof.** Write $B$ for $B(D,\beta,L)$. Equation (46) gives $S(a_1) \ge V(a_1) - B$. For any $a \ne a_1$ the definition of $g$ gives $V(a) \le V(a_1) - g$, so equation (46) gives $S(a) \le V(a) + B \le V(a_1) - g + B$. With
+$g > 2B$ that is below $V(a_1) - B \le S(a_1)$, so $S(a) < S(a_1)$ for every $a \ne a_1$. $\blacksquare$
+
+#### 10.5 Result 4: the prediction, which is H2
+
+Combine equations (47) and (48). The search returns the right candidate while:
+
+$$\bar{d}(D,\beta) \;<\; \frac{1}{\varepsilon_f + L_a\sigma_a}
+\left[\frac{g}{2\,C_Q} - \Delta(L)\right] \tag{49}$$
+
+Read equation (49) as a line in the $(\bar{d}, \Delta)$ plane. The staleness $\Delta(L)$ moves the **intercept**. The
+per depth injection $\varepsilon_f + L_a\sigma_a$ sets the **slope**. They act on different coefficients, so the depth
+at which search stops helping is set by the model term, the staleness at which it stops helping is set by the imagination
+term, and one moves without the other. Writing the gain over the baseline as a monotone decreasing function of $B$, the
+same two equations make the gain additive to first order:
+
+$$\text{gain}(D,L) \;\approx\; \text{gain}_0(D) \;-\; c\,\Delta(L),
+\qquad c > 0 \ \text{independent of } D \tag{50}$$
+
+Equation (50) predicts a staleness penalty of the same size in every depth column, not one that grows with depth. It
+does **not** predict a stable $\arg\max_D$. Section 13.4 reports that the best depth is unstable across reruns (6, 6,
+6, 4 against 6, 2, 4, 1) while the gain falls monotonically with lag in both. The bound predicts the statistic that is
+stable and declines to predict the one that is not. That is the correct reading of H2: measure the gain, not the argmax.
+
+#### 10.6 Which constants the study can measure
+
+**Measurable.** $\varepsilon_f$ comes from the horizon 1 row of `results/wm_error.json` and
+`runs/mjlab/results/wm_error.json`: $\sqrt{0.0013} = 0.037$ on 2D and $\sqrt{0.0065} = 0.080$ on mjlab. Jensen makes
+$\sqrt{\mathcal{E}_1}$ an upper bound on $\varepsilon_f$. The tables do not say whether the mean is over the vector
+norm or per element; the ratio across horizons is the same either way. $\Lambda$ is measurable indirectly from the same
+tables, because equation (23) uses recorded joint actions and so isolates the model term: the ratios
+$\sqrt{\mathcal{E}_d/\mathcal{E}_1}$ are 1, 1.62, 2.16, 2.53, 3.31, 4.04 on 2D and 1, 1.55, 2.02, 2.45, 3.24, 3.99 on
+mjlab at horizons 1, 2, 3, 4, 6, 8. Both are close to $d^{0.67}$, which is below the linear $G_1(d) = d$, so
+$\Lambda_K \le 1$ holds empirically and equation (45) is a valid upper bound. The policy noise part of $\sigma_a$ is
+the standard deviation of the tanh Gaussian at the sampled beliefs. $L_f$ is the spectral norm of
+$\partial f_\psi/\partial z$ by autograd on held out latents. The score gap $g$ costs nothing to record:
+`_search_rows` already computes $S(a)$ for every root candidate, so the top two values give an empirical proxy for the
+$V$ gap that equation (48) needs. This is the one instrumentation the study should add.
+
+**Not measurable with what exists.** $L_u$ is a local estimate only, because softmax attention has no useful global
+Lipschitz constant. $L_\pi$, $L_Q$, and $L_{Q,a}$ are computable as products of weight norms, which is loose by orders
+of magnitude. The self only fusion part and the frozen context part of $\sigma_a$ need the sender's own table, which the
+receiver never sees. A6 cannot be tested, because the open loop tables sample the data distribution and the tree leaves
+it. The map from a latent error $\delta^{(d)}$ to a loss in success rate points is not modelled here and stays the gap
+the earlier draft named.
+
+#### 10.7 What the bound says about the measured numbers
+
+Across three mjlab seeds the gain of depth 6 search over the sampled policy is +19.3, +14.9, and +5.9 points at lags 0,
+1, and 4. By equations (42) and (50) the gain falls through the single term $c\,\Delta(L) =
+c\,\iota\,G_{\Lambda_1}(L)$, so the shape of the fall reads $\Lambda_1$ directly: a linear fall means $\Lambda_1 =
+1$, a convex accelerating fall means $\Lambda_1 > 1$, and a saturating fall means $\Lambda_1 < 1$. A least squares line
+through the three points gives slope $-3.27$ points per lag step and intercept 18.8, with residuals of $+0.5$, $-0.7$,
+and $+0.2$ points. The convexity test has the wrong sign for a geometric term: the drop from lag 0 to lag 1 is 4.4
+points, while the mean drop per step from lag 1 to lag 4 is 3.0 points, so the later steps cost less, not more. The data
+therefore fits a linear in $L$ imagination term and gives no support to a geometric one. Two qualifications follow.
+First, the seed spread is $\pm 6.3$, $\pm 7.4$, and $\pm 7.9$ points, so the 1.4 point difference between the early
+and the late per step drop is far inside the noise, and three lags cannot separate a mild convexity from a mild
+concavity. Second, the linear reading agrees with the independent measurement of section 10.6, where the open loop error
+grows as $d^{0.67}$ and so puts $\Lambda \le 1$. Two measurements from different data reaching the same conclusion is
+the strongest claim available here: the staleness term grows about linearly in $L$, the model is close to non expansive,
+and equation (45) rather than the geometric form is the one to quote.
+
+## 14. References
 
 - Ball, P. J., Smith, L., Kostrikov, I., and Levine, S. (2023). *Efficient Online Reinforcement Learning with Offline Data*. arXiv:2302.02948. Source for equations (17) to (20).
 - Haarnoja, T., Zhou, A., Abbeel, P., and Levine, S. (2018). *Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor*. arXiv:1801.01290. Source for equations (11) to (16).

@@ -702,7 +702,10 @@ recipe, the same offline buffer) and the fair H1 arms were run on each at 256 en
 | 1 | 58.5 ± 6.7 | 56.4 ± 6.7 | 71.1 ± 8.8 | 73.4 ± 5.3 | +7.2, +21.9, +15.5 |
 | 4 | 60.2 ± 5.5 | 58.7 ± 5.5 | 65.7 ± 9.8 | 66.1 ± 5.7 | −2.9, +12.5, +8.0 |
 
-Mean and standard deviation across the three seeds.
+Mean and standard deviation across the three seeds. `math.md` section 13 derives a bound in
+which the staleness enters the search's score bias as an additive offset, and it reads the fall
+of the gain (+19.3, +14.9, +5.9) as linear in the lag, in agreement with the measured open loop
+error growth.
 
 **H1 against the fair baseline holds across seeds.** Depth 6 search beats the sampled policy in
 3 of 3 seeds at lags 0 and 1, by 19.3 ± 6.3 and 14.9 ± 7.4 points. **H2 holds in the mean and
