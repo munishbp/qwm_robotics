@@ -39,3 +39,5 @@ runs/*/*.log
 results/day1.log
 results/day*.log
 results/day*.pid
+runs/*/*.pid
+runs/*/checkpoints
