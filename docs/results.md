@@ -829,6 +829,26 @@ The fair comparison against the sampled policy across seeds is section 16 and th
 curve is `figures/paper/gain_vs_staleness.png`; the gain over no search by seed is
 `figures/paper/gain_over_no_search_by_seed.png`.
 
+## 20. The box pusher control
+
+Reviewer 2 of the second round asked whether the mjlab positive rests on a contact artefact: a
+cylinder pusher gets one contact point against the box and can spin it far more than a box
+shaped pusher (`mjlab_fidelity.md` section 4), on a task whose success test includes the angle.
+The seed 0 snapshot, trained with cylinders, was evaluated under box pusher physics
+(`SWARM_MJ_OPTS="pusher_shape=box"`, `runs/mjlab_boxpusher/`, 256 envs and 5 batches). The
+scripted controller reaches 78.1 percent under box pushers (83.6 with cylinders).
+
+| Lag | Sampled policy | Random candidate | Depth 0 | Depth 6, beta 0.9 | Depth 6 minus sampled | Same, cylinders (section 16) |
+|---|---|---|---|---|---|---|
+| 0 | 49.7 ± 1.2 | 45.7 ± 0.7 | 60.2 ± 1.3 | 67.0 ± 1.3 | +17.3 | +13.5 |
+| 1 | 56.5 ± 0.9 | 52.7 ± 0.7 | 61.4 ± 0.8 | 69.8 ± 1.1 | +13.3 | +4.5 |
+| 4 | 61.9 ± 1.3 | 57.2 ± 1.7 | 54.5 ± 1.4 | 57.8 ± 1.0 | −4.1 | −0.5 |
+
+The search gain is the same or larger with box pushers and the window closes at the same
+staleness. The policy transfers to the new contact geometry with a loss of about 10 points in
+its own success, and the search recovers it. The mjlab positive does not rest on the cylinder
+artefact. One seed, evaluated without retraining.
+
 ## 11. Conclusions
 
 1. **Test time search helps a decentralized heterogeneous team on the contact physics task and

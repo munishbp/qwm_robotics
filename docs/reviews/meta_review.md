@@ -33,11 +33,9 @@ honest, and the write up still contradicts itself in places because it grew sect
 
 ## What remains, in order of weight
 
-1. **The cylinder pusher artefact** (reviewer 2). A cylinder gets one contact point against the
-   box and spins it far more than a box pusher would, on a task whose success test includes the
-   angle. Every result uses cylinders. The box option exists (`mjlab_fidelity.md`); rerunning the
-   fair H1 arms with it on one seed costs about 12 GPU minutes plus a retrain if the policy does
-   not transfer.
+1. **The cylinder pusher artefact** (reviewer 2). Run after this review: the seed 0 snapshot
+   evaluated under box pushers keeps the search gain (+17.3, +13.3, −4.1 against +13.5, +4.5,
+   −0.5 with cylinders; `results.md` section 20). Closed on one seed without retraining.
 2. **One seed for H3, H4, robustness, and transfer**, and the 2 point reproducibility floor
    measured once on mjlab. The floor is now restated where sections 14 to 19 depend on it.
 3. **The document grew by accretion** (reviewer 3: 20 of 67 first round discrepancies fixed, 7
@@ -55,5 +53,5 @@ For a learning project this is a good stopping point: the pipeline is end to end
 on two simulators, the claims are sized to their evidence, the failures are recorded as results,
 and three adversarial rounds have run against it. The work that would move it further is
 specific and cheap in GPU time (items 1 and 2 above, about two hours) but the returns are
-diminishing; the one experiment that could still change the story is the box pusher rerun,
-because it tests whether the mjlab positive rests on a contact artefact.
+diminishing; the one experiment that could still have changed the story, the box pusher rerun, was run and
+did not change it.
