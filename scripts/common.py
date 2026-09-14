@@ -54,9 +54,15 @@ def make_env(num_envs: int, seed: int, training: bool, team: str = "default", de
     """Build the task on the simulator named by the SWARM_SIM environment variable (2d or mjlab)."""
     n = clamp_envs(num_envs, training)
     if SIM == "mjlab":
-        from swarm.env_mjlab import MjlabTransportEnv
+        from swarm.env_mjlab import MjlabConfig, MjlabTransportEnv
 
-        return MjlabTransportEnv(n, team=TEAMS[team], device=device, cfg=env_config(), seed=seed)
+        # SWARM_MJ_OPTS="pusher_shape=box,robot_collision=true" overrides MjlabConfig fields.
+        mj = MjlabConfig()
+        for item in filter(None, os.environ.get("SWARM_MJ_OPTS", "").split(",")):
+            key, value = item.split("=", 1)
+            current = getattr(mj, key)
+            setattr(mj, key, value.lower() == "true" if isinstance(current, bool) else type(current)(value))
+        return MjlabTransportEnv(n, team=TEAMS[team], device=device, cfg=env_config(), seed=seed, mj=mj)
     if SIM not in ("2d", "2d_momentum"):
         raise ValueError(f"SWARM_SIM must be 2d, 2d_momentum, or mjlab, got {SIM}")
     return TransportEnv(n, team=TEAMS[team], device=device, cfg=env_config(), seed=seed)
