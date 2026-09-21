@@ -35,7 +35,7 @@ def main() -> None:
     p.add_argument("--offline", default="data/offline.pt")
     p.add_argument("--no-offline", action="store_true")
     p.add_argument("--collect-depth", type=int, default=-1, help="search depth during collection, -1 for none")
-    p.add_argument("--n-step", type=int, default=1, help="rows in the critic return window")
+    p.add_argument("--n-step", type=int, default=5, help="rows in the critic return window; 1 reproduces results.md sections 3 to 20")
     p.add_argument("--eval-every", type=int, default=500)
     p.add_argument("--eval-envs", type=int, default=128)
     p.add_argument("--seed", type=int, default=0)

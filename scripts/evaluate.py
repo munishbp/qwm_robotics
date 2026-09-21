@@ -43,7 +43,7 @@ def main() -> None:
     p.add_argument("--gate", type=float, default=0.0, help="search only where r is at or above this value; 0 disables")
     p.add_argument("--gate-fallback", choices=["sample", "mean"], default="sample", help="action of a gated row")
     p.add_argument("--gate-shuffle", action="store_true", help="control: permute r across rows")
-    p.add_argument("--lcb", type=float, default=0.0, help="score is the ensemble mean minus this many std")
+    p.add_argument("--lcb", type=float, default=2.0, help="score is the ensemble mean minus this many std; 0 reproduces results.md sections 3 to 20")
     p.add_argument("--wm", choices=["trained", "random"], default="trained", help="control: random world model")
     p.add_argument("--out", default="")
     args = p.parse_args()

@@ -1129,6 +1129,86 @@ The standard errors are 0.3 to 1.7 points.
   ties on seed 2 (-0.6 and +2.8). With `lcb = 2.0` the gated search stays within 2 points of the
   full search at about 30 percent of the searches.
 
+## 24. H2, H3, and H4 on the n = 5 critic, three mjlab seeds
+
+Snapshots `runs/mjlab_nstep5`, `runs/mjlab_nstep5_seed1`, and `runs/mjlab_nstep5_seed2`. Every cell
+uses `lcb = 2.0`, 256 envs, and 3 batches. Files `h2_lcb2.json`, `h3_lcb2.json`, and `h4_lcb2.json` in
+each run. The standard errors are 0.2 to 3.2 points.
+
+### 24.1 H2: depth against staleness
+
+| Seed | Lag | No search | Depth 0 | Depth 1 | Depth 2 | Depth 4 | Depth 6 | Best depth minus depth 0 |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 0 | 28.5 | 82.4 | 88.5 | 87.8 | 87.0 | 87.5 | +6.1 |
+| 0 | 1 | 31.2 | 86.2 | 89.2 | 91.8 | 89.8 | 89.6 | +5.6 |
+| 0 | 2 | 33.6 | 89.3 | 89.7 | 90.2 | 92.3 | 89.3 | +3.0 |
+| 0 | 4 | 29.9 | 88.4 | 87.1 | 86.2 | 87.1 | 85.7 | -1.3 |
+| 1 | 0 | 35.9 | 70.8 | 76.4 | 76.2 | 76.2 | 77.1 | +6.2 |
+| 1 | 1 | 38.3 | 76.7 | 82.0 | 82.7 | 80.3 | 81.0 | +6.0 |
+| 1 | 2 | 39.5 | 80.2 | 80.9 | 83.6 | 81.5 | 82.4 | +3.4 |
+| 1 | 4 | 33.6 | 76.3 | 74.6 | 75.7 | 74.9 | 73.3 | -0.7 |
+| 2 | 0 | 27.7 | 84.6 | 89.7 | 89.7 | 88.4 | 89.5 | +5.1 |
+| 2 | 1 | 29.7 | 85.0 | 89.6 | 89.2 | 89.7 | 89.7 | +4.7 |
+| 2 | 2 | 28.9 | 85.7 | 89.5 | 89.8 | 89.7 | 87.4 | +4.2 |
+| 2 | 4 | 27.2 | 79.0 | 79.9 | 80.3 | 81.6 | 80.5 | +2.6 |
+
+- The gain of the world model roll falls with staleness on every seed. The three seed mean of the
+  best depth minus depth 0 is 5.8, 5.4, 3.5, and 0.2 points at lags 0, 1, 2, and 4. At lag 4 it is
+  negative on two seeds.
+- The decision rule of `methodology.md` section 7 tracks the index of the best depth. The index
+  moves between 1 and 6 without order, because depths 1 to 6 differ by less than the noise. By the
+  rule H2 is not resolved. By the size of the gain it holds on three seeds. The gain is the
+  better measure, because it does not depend on an argmax over near equal cells.
+- One step of roll gives most of the gain: 4.5 to 6.1 points at lag 0. Deeper search adds little.
+- The pessimistic score does not remove the depth gain here, as it did on the one step critic
+  (section 23.1). The roll has value when the critic ranks well.
+
+### 24.2 H3: the tree search discount against staleness, depth 2
+
+| Seed | Lag | beta 0 | 0.1 | 0.3 | 0.5 | 0.7 | 0.9 | 1.0 | High minus low |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | 0 | 83.3 | 88.0 | 88.4 | 88.9 | 87.6 | 85.9 | 86.5 | -1.5 |
+| 0 | 1 | 85.5 | 90.9 | 90.9 | 90.8 | 87.2 | 88.5 | 88.2 | -2.9 |
+| 0 | 2 | 89.5 | 92.1 | 91.5 | 90.4 | 89.3 | 86.7 | 87.0 | -4.1 |
+| 0 | 4 | 89.6 | 88.7 | 90.6 | 87.0 | 85.7 | 85.2 | 86.3 | -3.9 |
+| 1 | 0 | 67.8 | 74.7 | 76.7 | 76.3 | 79.7 | 78.8 | 80.5 | +4.0 |
+| 1 | 1 | 78.9 | 82.3 | 81.9 | 82.7 | 83.3 | 83.1 | 82.3 | +0.8 |
+| 1 | 2 | 80.7 | 83.3 | 82.2 | 84.1 | 82.6 | 82.8 | 81.9 | -0.3 |
+| 1 | 4 | 76.3 | 78.8 | 77.9 | 77.0 | 75.7 | 74.1 | 74.9 | -3.5 |
+| 2 | 0 | 85.0 | 87.0 | 89.3 | 88.8 | 88.7 | 86.5 | 86.3 | -1.0 |
+| 2 | 1 | 84.0 | 88.2 | 89.2 | 90.5 | 87.1 | 88.3 | 88.3 | -0.8 |
+| 2 | 2 | 84.5 | 88.2 | 88.8 | 87.6 | 88.7 | 86.8 | 87.2 | -0.9 |
+| 2 | 4 | 82.7 | 82.9 | 83.1 | 81.0 | 81.2 | 80.5 | 78.8 | -2.8 |
+
+"High minus low" is the mean of beta 0.7, 0.9, and 1.0 minus the mean of beta 0.1 and 0.3.
+
+- The direction of H3 holds. A heavy weight on imagined value costs more as the information
+  ages: the three seed mean of high minus low is +0.5, -1.0, -1.8, and -3.4 points at lags 0, 1, 2,
+  and 4, and it falls on every seed from lag 0 to lag 4.
+- The rule of `methodology.md` (the best beta is non increasing in lag) holds on seed 1 (1.0, 0.7,
+  0.5, 0.1). Seeds 0 and 2 are not resolved, because their best cells differ by less than 1 SE.
+- Imagined value helps at lags 0 to 2: some beta above 0 beats beta 0 by 2.6 to 12.7 points. At lag 4
+  the best beta beats beta 0 by 0.4 to 2.5 points, which is inside the noise.
+- The default `beta = 0.5` is within 2 points of the best cell in 9 of 12 rows.
+
+### 24.3 H4: leader election, depth 2
+
+| Seed | Lag | Independent | Leader | Round robin |
+|---|---|---|---|---|
+| 0 | 1 | 90.5 ± 1.5 | 63.8 ± 2.6 | 72.3 ± 1.0 |
+| 0 | 4 | 87.8 ± 0.6 | 60.7 ± 2.1 | 52.7 ± 0.5 |
+| 1 | 1 | 82.4 ± 1.0 | 58.2 ± 1.4 | 63.9 ± 1.7 |
+| 1 | 4 | 76.8 ± 0.6 | 48.6 ± 0.3 | 47.3 ± 2.4 |
+| 2 | 1 | 87.8 ± 1.2 | 72.8 ± 1.1 | 69.0 ± 0.7 |
+| 2 | 4 | 83.7 ± 1.3 | 53.0 ± 0.9 | 43.1 ± 2.3 |
+
+- H4 is refuted on every seed. Independent search beats the elected leader by 15 to 31 points and
+  round robin by 18 to 41 points at the same step time (61 to 66 ms).
+- The leader modes lose more at lag 4. A broadcast joint action rests on the stale estimates of one
+  robot for the whole team, and independent search lets each robot use its own fresh observation.
+- The robots disagree on the leader in 42 to 57 percent of the elections, so about half of the
+  robots follow a leader and the rest act with the mean action.
+
 ## 11. Conclusions
 
 1. **Test time search helps a decentralized heterogeneous team on the contact physics task and
@@ -1196,10 +1276,19 @@ The standard errors are 0.3 to 1.7 points.
    (section 21). It fails on the one step 2D critic, where a large span is head error. The ratio
    behind the gate does not predict whether search helps (section 22).
 
+10. **On the n = 5 critic, H2 and H3 hold in direction on three mjlab seeds and H4 is refuted on
+    all three (section 24).** The gain of the world model roll over the critic argmax falls from
+    5.8 points at lag 0 to 0.2 points at lag 4. A heavy tree search discount costs 3.4 points more
+    than a light one at lag 4 and nothing at lag 0. Independent search beats both leader modes by
+    15 to 41 points. The written decision rules for H2 and H3 track the index of the best cell,
+    and that index is inside the noise, so by those rules H2 is not resolved and H3 holds on one
+    seed. Conclusions 2 and 3 therefore carry over from the one step critic to the n = 5 critic.
+
 ## 12. Limitations
 
-- Sections 21 to 23 use lag 1 unless a table states the lag. H2 on the n = 5 critic is one seed,
-  and H3, H4, robustness, and transfer are not run on it. The gate threshold and the pessimism
+- Sections 21 to 23 use lag 1 unless a table states the lag. Section 24 runs H2, H3, and H4 on the
+  n = 5 critic at 3 batches per cell. Robustness and transfer are not run on it, and the 2D n = 5
+  snapshots have no H2 to H4 sweeps. The gate threshold and the pessimism
   weight were chosen on seed 0 of each simulator and then applied to the other seeds.
 - The n = 5 runs change the critic and the policy together, because the actor trains against the
   critic. The mean action falls on mjlab seed 0 (42.8 to 30.7) while the sampled policy rises.

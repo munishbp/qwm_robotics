@@ -63,8 +63,9 @@ class RLPDConfig:
     target_reduce: str = "mean"  # mean or min
     # The critic target sums the rewards of `n_step` recorded rows and bootstraps after the last
     # one. It stays a SARSA target on the behavior data. 1 is the one step target. A longer window
-    # attaches the terminal reward to the action in fewer backups (docs/next_steps.md item 4).
-    n_step: int = 1
+    # attaches the terminal reward to the action in fewer backups. docs/results.md sections 3 to 20
+    # used 1. Sections 22 and 23 show that 5 repairs the search on both simulators.
+    n_step: int = 5
     obs_mode: str = "belief"  # belief or full
     full_dim: int = 0
 

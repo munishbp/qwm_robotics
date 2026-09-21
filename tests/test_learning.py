@@ -128,7 +128,7 @@ def test_search_scores_the_best_root_by_the_critic_at_depth_zero():
     z = torch.randn(3, K, LATENT, device=DEV)
     feat = torch.rand(3, K, FEAT_DIM, device=DEV)
     own = torch.tensor([0, 2, 5], device=DEV)
-    joint, score, _ = search_rows(nets, z, feat, own, TYPES.to(DEV), SearchConfig(depth=0, candidates=16), False)
+    joint, score, _ = search_rows(nets, z, feat, own, TYPES.to(DEV), SearchConfig(depth=0, candidates=16, lcb=0.0), False)
     b = fuse_table(nets, z, feat)
     rows = torch.arange(3, device=DEV)
     q = nets.critic(b[rows, own], joint[rows, own]).mean(0)
@@ -176,7 +176,7 @@ def test_gate_splits_rows_and_keeps_shapes_at_depth():
     went = {}
     for shuffle in (False, True):
         torch.manual_seed(2)
-        cfg = SearchConfig(depth=2, gate=_median_r(nets, z, feat, own), gate_shuffle=shuffle)
+        cfg = SearchConfig(depth=2, gate=_median_r(nets, z, feat, own), gate_shuffle=shuffle, lcb=0.0)
         joint, score, went[shuffle] = search_rows(nets, z, feat, own, TYPES.to(DEV), cfg, False)
         assert joint.shape == (64, K, 3) and score.shape == (64,)
         assert 0 < went[shuffle].sum() < 64
@@ -202,7 +202,7 @@ def test_lcb_score_is_the_ensemble_mean_minus_the_scaled_spread():
     b, a = torch.randn(7, LATENT, device=DEV), torch.rand(7, 3, device=DEV)
     q = nets.critic(b, a)
     assert torch.allclose(_q(nets, b, a, SearchConfig(lcb=1.5)), q.mean(0) - 1.5 * q.std(0), atol=1e-6)
-    assert torch.allclose(_q(nets, b, a, SearchConfig()), q.mean(0))
+    assert torch.allclose(_q(nets, b, a, SearchConfig(lcb=0.0)), q.mean(0))
 
 
 def test_gate_rejects_a_scorer_that_is_not_the_critic():
@@ -253,5 +253,5 @@ def test_n_step_window_stops_at_the_episode_end_and_at_the_newest_row():
         assert abs(float(d["r"][i]) - ret) < 1e-5 and abs(float(d["disc"][i]) - disc) < 1e-6
         assert bool(d["term"][i]) == bool(buf.terminated[e, last])
     # One step keeps the old target: the reward of the row and one discount.
-    d1 = Agent(TYPES, RLPDConfig(gamma=gamma), DEV)._batch(buf, env.numel())
+    d1 = Agent(TYPES, RLPDConfig(n_step=1, gamma=gamma), DEV)._batch(buf, env.numel())
     assert torch.equal(d1["r"], buf.reward[env, row]) and (d1["disc"] == gamma).all()

@@ -43,8 +43,9 @@ class SearchConfig:
     gate_fallback: str = "sample"  # sample, mean
     gate_shuffle: bool = False
     # Pessimism. The critic score is the ensemble mean minus `lcb` ensemble standard deviations.
-    # The argmax over noisy heads selects the largest head error, and the bound removes it.
-    lcb: float = 0.0
+    # The argmax over noisy heads selects the largest head error, and the bound removes it. 0 is
+    # the plain score of docs/results.md sections 3 to 20. 2.0 is the best value of section 21.4.
+    lcb: float = 2.0
 
 
 def _roll_joint(nets: Nets, z: torch.Tensor, joint: torch.Tensor, types: torch.Tensor) -> torch.Tensor:

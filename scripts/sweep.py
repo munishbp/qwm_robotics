@@ -55,7 +55,7 @@ def main() -> None:
     p.add_argument("--h3-depth", type=int, default=2)
     p.add_argument("--h4-depth", type=int, default=2)
     p.add_argument("--gates", type=float, nargs="+", default=GATES, help="gate grid of --which gate")
-    p.add_argument("--lcb", type=float, default=0.0, help="pessimistic score of every group but lcb")
+    p.add_argument("--lcb", type=float, default=2.0, help="pessimistic score of every group but lcb; 0 reproduces results.md sections 3 to 20")
     p.add_argument("--lcbs", type=float, nargs="+", default=[0.5, 1.0, 2.0], help="lcb grid of --which lcb")
     p.add_argument("--tag", default="", help="suffix of the output file names, so a second grid keeps the first")
     p.add_argument("--smoke", action="store_true")

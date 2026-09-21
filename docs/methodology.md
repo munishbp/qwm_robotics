@@ -118,6 +118,12 @@ in a new run directory with the offline data of the matching one step seed, so t
 only change. The threshold `gate = 1.0` and the weight `lcb = 2.0` were chosen on seed 0 and then
 applied to seeds 1 and 2 without a new search.
 
+**The defaults changed after section 23.** `RLPDConfig.n_step` is 5 and `SearchConfig.lcb` is 2.0.
+Every result in sections 3 to 20 used `n_step = 1` and `lcb = 0`. The flags `--n-step 1` and `--lcb 0`
+reproduce them. A script that builds `SearchConfig` without an `lcb` argument, such as
+`scripts/day1_controls.py`, `scripts/audit.py`, and `scripts/lag_curve.py`, now uses the pessimistic
+score. The gate stays off by default.
+
 **The fair H1 arms.** Four arms on the same env seeds: the sampled policy (the policy with its
 exploration noise), a random root candidate, depth 0 (critic argmax over nine candidates), and
 depth 6 search with beta 0.9. 256 envs and 5 batches per cell, env seeds 1000 to 1004, so every

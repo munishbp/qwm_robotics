@@ -9,7 +9,8 @@ that is already a frame old.
 The current answer, from `docs/results.md` sections 21 to 23: yes, with a critic that can rank
 actions. A five step critic target and a pessimistic search score lift the depth 2 search to 84 to
 91 percent on three mjlab seeds, against 54 to 74 percent for the sampled policy. The depth gain
-falls with staleness as H2 predicts. A gate on the critic's own signal keeps that success with 11
+falls with staleness on all three seeds as H2 predicts, and independent search beats an elected
+leader by 15 to 41 points. A gate on the critic's own signal keeps that success with 11
 to 35 percent of the searches.
 
 The full proposal, hypotheses, method, baselines, and schedule are in
@@ -62,11 +63,15 @@ uv pip install --python .venv/bin/python -e ".[mjlab]"
 SWARM_SIM=mjlab RUN_DIR=$PWD/runs/mjlab bash scripts/run_all.sh 24000
 ```
 
-The settings of sections 21 to 23 are flags, and the defaults reproduce the earlier sections:
+The defaults are the five step critic target (`n_step = 5`) and the pessimistic score (`lcb = 2.0`).
+`docs/results.md` sections 3 to 20 used the one step target and the plain score. These flags
+reproduce them, and `run_all.sh` needs them added to its `train.py`, `evaluate.py`, and `sweep.py`
+lines for that purpose:
 
 ```
-.venv/bin/python scripts/train.py --obs belief --n-step 5 --out belief      # five step critic target
-.venv/bin/python scripts/evaluate.py --depth 2 --lcb 2.0 --gate 1.0          # pessimistic score and gate
+.venv/bin/python scripts/train.py --obs belief --n-step 1 --out belief      # one step critic target
+.venv/bin/python scripts/evaluate.py --depth 2 --lcb 0                       # plain score
+.venv/bin/python scripts/evaluate.py --depth 2 --gate 1.0                    # the gate, off by default
 .venv/bin/python scripts/sweep.py --which gate lcb --envs 256 --batches 6    # the grids with their controls
 ```
 

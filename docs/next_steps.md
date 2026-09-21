@@ -362,8 +362,10 @@ the head spread of the candidate difference.
 
 **mjlab (section 23).** n = 5 with depth 2 and `lcb = 2.0` gives 90.5, 83.5, and 89.0 percent on three
 seeds, 2.6 to 16.4 points above the one step critic. H2 on the seed 0 snapshot has the predicted
-shape. Open: H2 on the n = 5 snapshots of seeds 1 and 2, H3 and H4 on all three, n in {3, 10}, and
-the decision to make n = 5 and `lcb = 2.0` the defaults.
+shape. H2, H3, and H4 on all three n = 5 snapshots are done (section 24), and n = 5 and `lcb = 2.0`
+are the defaults. Open: n in {3, 10}, H2 to H4 on the 2D n = 5 snapshots, robustness and transfer
+on the n = 5 critic, and a decision rule for H2 and H3 that uses the size of the gain and not the
+index of the best cell.
 
 The original plan follows.
 

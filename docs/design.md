@@ -206,8 +206,8 @@ teammates, so team size can change at test time.
   overestimation the minimum was there to prevent. Actor objective uses the mean over all heads.
 - `RLPDConfig.n_step` sets the return window of the target. The target sums the rewards of up to
   n recorded rows and bootstraps after the last one. The window stops at the end of the episode and
-  at the newest row of the buffer. The default is 1. `docs/results.md` section 22 shows that n = 5
-  repairs the 2D search, so n = 5 is the candidate for a new default.
+  at the newest row of the buffer. The default is 5. `docs/results.md` sections 3 to 20 used 1, and
+  `--n-step 1` reproduces them. Sections 22 and 23 show that 5 repairs the search on both simulators.
 - Discount `gamma = 0.99`. Adam with learning rate `3e-4` for every module. Fusion has 4 heads.
 - Uncertainty `unc_i = std_m Q_m(b_i, mu(b_i))`, the critic ensemble spread at the mean action.
 - Entropy temperature `alpha` is learned with target entropy `-3`, starting at `0.1`.
@@ -297,6 +297,10 @@ critic scorer. The control `gate_shuffle` permutes `r` across the rows of a chun
 searched share and destroys the selection, so it separates "search less" from "search where the
 critic can rank". The statistic `searched_fraction` reports the share of rows that searched.
 `scripts/sweep.py --which gate` runs the grid.
+
+The pessimistic score. The critic score of a node is the ensemble mean minus `lcb` ensemble
+standard deviations. The default is `lcb = 2.0`. `docs/results.md` sections 3 to 20 used the plain
+score, and `--lcb 0` reproduces them. The gate computes `r` from the same score.
 
 Sweep values: depth `-1, 0, 1, 2, 4, 6`, staleness `0, 1, 2, 4`, beta `0.0` to `1.0`.
 
