@@ -128,7 +128,7 @@ def test_search_scores_the_best_root_by_the_critic_at_depth_zero():
     z = torch.randn(3, K, LATENT, device=DEV)
     feat = torch.rand(3, K, FEAT_DIM, device=DEV)
     own = torch.tensor([0, 2, 5], device=DEV)
-    joint, score = search_rows(nets, z, feat, own, TYPES.to(DEV), SearchConfig(depth=0, candidates=16), False)
+    joint, score, _ = search_rows(nets, z, feat, own, TYPES.to(DEV), SearchConfig(depth=0, candidates=16), False)
     b = fuse_table(nets, z, feat)
     rows = torch.arange(3, device=DEV)
     q = nets.critic(b[rows, own], joint[rows, own]).mean(0)
@@ -136,6 +136,82 @@ def test_search_scores_the_best_root_by_the_critic_at_depth_zero():
     # The chosen action must score at least as well as the mean action.
     q_mean = nets.critic(b[rows, own], nets.actor.mean(b[rows, own])).mean(0)
     assert (q >= q_mean - 1e-5).all()
+
+
+def test_gate_above_every_r_returns_the_fallback_and_searches_nothing():
+    torch.manual_seed(0)
+    nets = Nets().to(DEV)
+    table = torch.randn(3, K, K, LATENT, device=DEV)
+    feat = torch.rand(3, K, K, FEAT_DIM, device=DEV)
+    unc_table = torch.rand(3, K, K, device=DEV)
+    cfg = SearchConfig(depth=2, gate=1e9, gate_fallback="mean")
+    a, stats = search(nets, table, feat, TYPES.to(DEV), unc_table, cfg, 0)
+    assert stats["searched_fraction"] == 0.0
+    b = fuse_table(nets, table.reshape(3 * K, K, LATENT), feat.reshape(3 * K, K, FEAT_DIM)).reshape(3, K, K, LATENT)
+    own_b = b.diagonal(dim1=1, dim2=2).transpose(1, 2)
+    assert torch.allclose(a, nets.actor.mean(own_b), atol=1e-5)
+
+
+def test_gate_below_every_r_matches_the_ungated_search_at_depth_zero():
+    nets = Nets().to(DEV)
+    table = torch.randn(3, K, K, LATENT, device=DEV)
+    feat = torch.rand(3, K, K, FEAT_DIM, device=DEV)
+    unc_table = torch.rand(3, K, K, device=DEV)
+    torch.manual_seed(1)
+    a0, _ = search(nets, table, feat, TYPES.to(DEV), unc_table, SearchConfig(depth=0), 0)
+    torch.manual_seed(1)
+    a1, stats = search(nets, table, feat, TYPES.to(DEV), unc_table, SearchConfig(depth=0, gate=1e-9), 0)
+    assert stats["searched_fraction"] == 1.0
+    assert torch.allclose(a0, a1)
+
+
+def test_gate_splits_rows_and_keeps_shapes_at_depth():
+    torch.manual_seed(0)
+    nets = Nets().to(DEV)
+    from swarm.search import search_rows
+    z = torch.randn(64, K, LATENT, device=DEV)
+    feat = torch.rand(64, K, FEAT_DIM, device=DEV)
+    own = torch.arange(64, device=DEV) % K
+    # The shuffle keeps the searched fraction, because it permutes r and does not change it.
+    went = {}
+    for shuffle in (False, True):
+        torch.manual_seed(2)
+        cfg = SearchConfig(depth=2, gate=_median_r(nets, z, feat, own), gate_shuffle=shuffle)
+        joint, score, went[shuffle] = search_rows(nets, z, feat, own, TYPES.to(DEV), cfg, False)
+        assert joint.shape == (64, K, 3) and score.shape == (64,)
+        assert 0 < went[shuffle].sum() < 64
+    assert went[False].sum() == went[True].sum()
+
+
+def _median_r(nets, z, feat, own) -> float:
+    torch.manual_seed(2)
+    from swarm.search import _candidates
+    b = fuse_table(nets, z, feat)
+    rows = torch.arange(z.shape[0], device=DEV)
+    joint = _candidates(nets, b, own, 8, False)
+    b_own = b[rows, own]
+    q = nets.critic(b_own.unsqueeze(1).expand(-1, joint.shape[1], -1), joint[rows, :, own]).mean(0)
+    spread = nets.critic(b_own, joint[rows, 0, own]).std(0)
+    return ((q.max(1).values - q.min(1).values) / spread).median().item()
+
+
+def test_lcb_score_is_the_ensemble_mean_minus_the_scaled_spread():
+    torch.manual_seed(0)
+    nets = Nets().to(DEV)
+    from swarm.search import _q
+    b, a = torch.randn(7, LATENT, device=DEV), torch.rand(7, 3, device=DEV)
+    q = nets.critic(b, a)
+    assert torch.allclose(_q(nets, b, a, SearchConfig(lcb=1.5)), q.mean(0) - 1.5 * q.std(0), atol=1e-6)
+    assert torch.allclose(_q(nets, b, a, SearchConfig()), q.mean(0))
+
+
+def test_gate_rejects_a_scorer_that_is_not_the_critic():
+    import pytest
+    nets = Nets().to(DEV)
+    table = torch.randn(2, K, K, LATENT, device=DEV)
+    feat = torch.rand(2, K, K, FEAT_DIM, device=DEV)
+    with pytest.raises(ValueError, match="scorer q"):
+        search(nets, table, feat, TYPES.to(DEV), torch.rand(2, K, K, device=DEV), SearchConfig(scorer="random", gate=1.0), 0)
 
 
 def test_leader_mode_follows_self_elected_leaders_only():
@@ -154,3 +230,28 @@ def test_leader_mode_follows_self_elected_leaders_only():
     assert stats["searches_per_env"] == 0.5
     assert stats["robots_following_a_leader"] == 0.5
     assert stats["leader_disagreement"] > 0
+
+
+def test_n_step_window_stops_at_the_episode_end_and_at_the_newest_row():
+    from swarm.rlpd import Agent, RLPDConfig
+    torch.manual_seed(0)
+    buf, steps, n, gamma = Buffer(4, 64, TYPES, DEV), 40, 5, 0.9
+    fill(buf, MessageTable(4, K, DEV), steps, done_p=0.15)
+    buf.reward.copy_(torch.rand_like(buf.reward))
+    agent = Agent(TYPES, RLPDConfig(n_step=n, gamma=gamma), DEV)
+    env = torch.arange(4, device=DEV).repeat_interleave(steps - 12)
+    row = torch.arange(12, steps, device=DEV).repeat(4)
+    buf.sample_rows = lambda _: (env, row)
+    d = agent._batch(buf, env.numel())
+    for i in range(env.numel()):
+        e, t = int(env[i]), int(row[i])
+        ret, disc, last = 0.0, 1.0, t
+        for m in range(n):
+            if t + m > steps - 1 or int(buf.ep_start[e, t + m]) != int(buf.ep_start[e, t]):
+                break
+            ret, disc, last = ret + disc * float(buf.reward[e, t + m]), disc * gamma, t + m
+        assert abs(float(d["r"][i]) - ret) < 1e-5 and abs(float(d["disc"][i]) - disc) < 1e-6
+        assert bool(d["term"][i]) == bool(buf.terminated[e, last])
+    # One step keeps the old target: the reward of the row and one discount.
+    d1 = Agent(TYPES, RLPDConfig(gamma=gamma), DEV)._batch(buf, env.numel())
+    assert torch.equal(d1["r"], buf.reward[env, row]) and (d1["disc"] == gamma).all()

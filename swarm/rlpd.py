@@ -61,6 +61,10 @@ class RLPDConfig:
     # over a 90 step horizon that compounds to a value of zero. The [0, 1] clamp bounds the
     # overestimation the minimum was there to prevent.
     target_reduce: str = "mean"  # mean or min
+    # The critic target sums the rewards of `n_step` recorded rows and bootstraps after the last
+    # one. It stays a SARSA target on the behavior data. 1 is the one step target. A longer window
+    # attaches the terminal reward to the action in fewer backups (docs/next_steps.md item 4).
+    n_step: int = 1
     obs_mode: str = "belief"  # belief or full
     full_dim: int = 0
 
@@ -93,16 +97,30 @@ class Agent:
         env, row = buf.sample_rows(n)
         slot = buf._slot(row)
         now = self.belief_fn(self.nets, buf, env, row, use_next=False)
+        # The return window. It ends at the last row of the episode, at the newest row of the
+        # buffer, or after n_step rows, whichever comes first. `last` is its final row and `disc`
+        # is the discount of the bootstrap that follows it.
+        last, ret = row.clone(), buf.reward[env, slot].clone()
+        disc = torch.full_like(ret, self.cfg.gamma)
+        alive = torch.ones_like(row, dtype=torch.bool)
+        for m in range(1, self.cfg.n_step):
+            s_m = buf._slot((row + m).clamp(max=buf.t - 1))
+            alive = alive & (row + m <= buf.t - 1) & (buf.ep_start[env, s_m] == buf.ep_start[env, slot])
+            ret = ret + alive * disc * buf.reward[env, s_m]
+            disc = torch.where(alive, disc * self.cfg.gamma, disc)
+            last = torch.where(alive, row + m, last)
+        # The world model target is one step after `row`. The critic bootstraps after `last`.
         with torch.no_grad():
             nxt = self.belief_fn(self.nets.target_view(), buf, env, row, use_next=True)
+            boot = nxt if self.cfg.n_step == 1 else self.belief_fn(self.nets.target_view(), buf, env, last, use_next=True)
         # The next recorded action exists when the next row is in the buffer and in the same
         # episode. Otherwise the bootstrap uses the policy mean.
-        nrow = (row + 1).clamp(max=buf.t - 1)
-        has_next = (row + 1 <= buf.t - 1) & (buf.ep_start[env, buf._slot(nrow)] == buf.ep_start[env, slot])
+        nrow = (last + 1).clamp(max=buf.t - 1)
+        has_next = (last + 1 <= buf.t - 1) & (buf.ep_start[env, buf._slot(nrow)] == buf.ep_start[env, slot])
         return {
-            "b": now["b"], "e": now["e"], "b_next": nxt["b"], "e_next": nxt["e"],
-            "a": buf.action[env, slot], "r": buf.reward[env, slot],
-            "term": buf.terminated[env, slot], "target": buf.target[env, slot],
+            "b": now["b"], "e": now["e"], "b_next": boot["b"], "e_next": nxt["e"],
+            "a": buf.action[env, slot], "r": ret, "disc": disc,
+            "term": buf.terminated[env, buf._slot(last)], "target": buf.target[env, slot],
             "a_next": buf.action[env, buf._slot(nrow)], "has_next": has_next,
         }
 
@@ -129,7 +147,7 @@ class Agent:
             if cfg.backup_entropy:
                 v_next = v_next - self.alpha * logp_next
             not_done = (~d["term"]).float().unsqueeze(-1)
-            y = d["r"].unsqueeze(-1) + cfg.gamma * not_done * v_next  # [B, K]
+            y = d["r"].unsqueeze(-1) + d["disc"].unsqueeze(-1) * not_done * v_next  # [B, K]
             y = y.clamp(cfg.target_min, cfg.target_max)
         q = n.critic(d["b"], d["a"])  # [M, B, K]
         critic_loss = F.mse_loss(q, y.unsqueeze(0).expand_as(q))

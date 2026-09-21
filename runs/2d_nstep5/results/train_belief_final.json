@@ -1,0 +1,35 @@
+{
+  "args": {
+    "obs": "belief",
+    "envs": 256,
+    "steps": 12000,
+    "utd": 4,
+    "lag": 1,
+    "offline": "/home/munish-persaud/robot/data/offline.pt",
+    "no_offline": false,
+    "collect_depth": -1,
+    "n_step": 5,
+    "eval_every": 500,
+    "eval_envs": 128,
+    "seed": 0,
+    "out": "belief",
+    "smoke": false
+  },
+  "last": {
+    "step": 12000,
+    "transitions": 3072000,
+    "train_success": 0.8144599303135889,
+    "eval_success": 0.546875,
+    "eval_length": 100.92823553465549,
+    "wall_min": 35.41286167303721,
+    "critic_loss": 0.0026172585785388947,
+    "actor_loss": -0.5732096433639526,
+    "alpha": 0.00011827945854747668,
+    "wm_loss": 0.0011077002855017781,
+    "dec_loss": 0.005932112690061331,
+    "q_mean": 0.5711754560470581,
+    "entropy": -3.146681547164917,
+    "bc_loss": 0.05412236973643303,
+    "dec_b_loss": 0.0004120827070437372
+  }
+}

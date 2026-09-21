@@ -59,36 +59,60 @@ controller here is a force allocation heuristic of that kind and is not a contri
 heterogeneous constraint (pushers cannot latch, grippers cannot push hard) is the study's own
 construction so that no single type can finish alone.
 
+## Multi step targets, pessimism, and deciding when to search
+
+Multi step returns are standard (Sutton and Barto 2018) and are one of the components of Rainbow
+(Hessel et al. 2018). The n step target here is that idea restricted to recorded rows, so it stays
+a SARSA target. It is not a contribution. The finding is that it decides whether test time search
+helps at all on this task. Scoring by the ensemble mean minus a multiple of the ensemble spread is
+the lower confidence bound that offline methods use inside training (An et al. 2021). Here it is
+used only at test time, inside the argmax of the search. Deciding per step whether to spend
+computation follows adaptive computation time (Graves 2016) and metacontrol of imagination
+(Hamrick et al. 2017). The gate here needs no training: it reads the critic ensemble that RLPD
+already provides. The prompt for the gate was a text decision model that pairs a fast typed answer
+with an act or escalate head (Laya model card, 2026). No part of that model is used.
+
 ## What is new, stated plainly
 
 1. The QWM search with imagined teammates, and the measurement that its value falls with
    teammate staleness while the baseline does not (mjlab, `results.md` 13.4).
 2. The observation that the same search does not help on the quasi static task in three seeds
    and a momentum variant, with three candidate explanations (demonstration quality, the critic's
-   action span, momentum) measured and eliminated, and the mechanism left open.
+   action span, momentum) measured and eliminated. A five step critic target then repairs the
+   search on three 2D seeds, which places the cause in the one step target (`results.md` 22).
 3. The refutation of leader elected broadcast search against independent search on both tasks.
 4. A recipe, with its failure history, for getting an RLPD style learner to train on a sparse
    reward, partially observed, cooperative task within a small budget.
 
+5. Two test time settings for a critic guided search: a pessimistic score that removes most of
+   the ranking noise at no cost, and a gate on the critic's own span that keeps the success of
+   the search with 11 to 35 percent of the searches, each with a shuffled control.
+
 ## References
 
+- An, Moon, Kim, Song. Uncertainty based offline reinforcement learning with diversified Q ensemble. NeurIPS 2021.
 - Ball, Smith, Kostrikov, Levine. Efficient online reinforcement learning with offline data. ICML 2023. arXiv:2302.02948.
 - Chen, Wang, Zhou, Ross. Randomized ensembled double Q learning. ICLR 2021.
 - Das, Gervet, Romoff, Batra, Parikh, Rabbat, Pineau. TarMAC: targeted multi agent communication. ICML 2019.
 - Dong et al. Q world models (QWM). 2026. arXiv:2608.17163.
 - Fujimoto, Gu. A minimalist approach to offline reinforcement learning. NeurIPS 2021.
 - Gmytrasiewicz, Doshi. A framework for sequential planning in multi agent settings. JAIR 2005.
+- Graves. Adaptive computation time for recurrent neural networks. 2016. arXiv:1603.08983.
 - Haarnoja, Zhou, Abbeel, Levine. Soft actor critic. ICML 2018.
+- Hamrick, Ballard, Pascanu, Vinyals, Heess, Battaglia. Metacontrol for adaptive imagination based optimization. ICLR 2017.
 - Hamrick et al. On the role of planning in model based deep reinforcement learning. ICLR 2021.
 - Hansen, Su, Wang. TD-MPC2. ICLR 2024.
+- Hessel et al. Rainbow: combining improvements in deep reinforcement learning. AAAI 2018.
 - Kalashnikov et al. QT-Opt: scalable deep reinforcement learning for vision based robotic manipulation. CoRL 2018.
 - Kostrikov, Nair, Levine. Offline reinforcement learning with implicit Q learning. ICLR 2022.
 - Kumar, Zhou, Tucker, Levine. Conservative Q learning for offline reinforcement learning. NeurIPS 2020.
+- Laya model card. Convai Innovations, 2026. https://huggingface.co/convaiinnovations/laya
 - Oliehoek, Amato. A concise introduction to decentralized POMDPs. Springer 2016.
 - Pinto, Andrychowicz, Welinder, Zaremba, Abbeel. Asymmetric actor critic for image based robot learning. RSS 2018.
 - Raileanu, Denton, Szlam, Fergus. Modeling others using oneself in multi agent reinforcement learning. ICML 2018.
 - Rashid et al. QMIX. ICML 2018.
 - Schrittwieser et al. Mastering Atari, Go, chess and shogi by planning with a learned model. Nature 2020.
 - Sukhbaatar, Szlam, Fergus. Learning multiagent communication with backpropagation. NeurIPS 2016.
+- Sutton, Barto. Reinforcement learning: an introduction, second edition. MIT Press 2018.
 - Yarats, Zhang, Kostrikov, Amos, Pineau, Fergus. Improving sample efficiency in model free reinforcement learning from images. AAAI 2021.
 - Yu et al. The surprising effectiveness of PPO in cooperative multi agent games. NeurIPS 2022.

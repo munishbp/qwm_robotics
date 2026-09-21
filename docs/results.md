@@ -849,6 +849,286 @@ staleness. The policy transfers to the new contact geometry with a loss of about
 its own success, and the search recovers it. The mjlab positive does not rest on the cylinder
 artefact. One seed, evaluated without retraining.
 
+## 21. The search gate
+
+`docs/design.md` section 7 defines the gate. A row searches only when `r`, the span of Q over the
+root candidates divided by the ensemble spread, reaches the gate. A row below the gate acts with one
+policy sample. The shuffled control permutes `r` across rows, so it searches the same share of rows
+and selects them at random. Protocol: lag 1, 256 envs, 6 batches, `scripts/sweep.py --which gate`.
+Files: `results/gate.json` and `runs/mjlab*/results/gate.json`. All numbers are success in percent
+with one standard error.
+
+### 21.1 mjlab, three training seeds, depth 2
+
+| Arm | Searched rows | Seed 0 | Seed 1 | Seed 2 | ms per step |
+|---|---|---|---|---|---|
+| Mean action | 0 | 42.8 ± 1.4 | 27.7 ± 1.3 | 26.0 ± 0.6 | 30 |
+| Sampled policy | 0 | 68.4 ± 1.2 | 56.4 ± 1.2 | 54.3 ± 0.9 | 29 |
+| Search, no gate | 100% | 71.3 ± 0.9 | 81.1 ± 0.8 | 68.7 ± 1.1 | 63 |
+| Gate 1.0 | 24% | 77.9 ± 1.1 | 79.4 ± 0.8 | 72.1 ± 0.9 | 40 |
+| Gate 1.0, shuffled | 26% | 73.6 ± 1.0 | 71.9 ± 1.0 | 65.4 ± 0.6 | 40 |
+| Gate 2.0 | 7 to 8% | 77.1 ± 0.9 | 75.3 ± 1.2 | 65.9 ± 1.1 | 39 |
+| Gate 2.0, shuffled | 8 to 10% | 69.4 ± 0.7 | 64.8 ± 1.6 | 58.9 ± 0.9 | 39 |
+
+Three statements hold on every seed.
+
+- The gate at 1.0 keeps the gain of the search with a quarter of the searches. Against the ungated
+  search it moves success by +6.6, -1.7, and +3.4 points, and it cuts the step time from 63 to 40 ms.
+- `r` selects the correct rows. The real gate beats the shuffled gate by 4.3, 7.5, and 6.7 points at
+  gate 1.0, and by 7.7, 10.5, and 7.0 points at gate 2.0. Depth 0 shows the same order.
+- The sample fallback beats the mean fallback at gate 2.0 by 4 to 17 points. At gate 1.0 it wins on
+  seeds 1 and 2, and the two fallbacks tie within 2 SE on seed 0.
+
+One statement does not hold on every seed. On seed 0 the gated search beats the ungated search, and
+the shuffled gate at 55 percent searched (76.8) beats both pure arms. Seeds 1 and 2 do not repeat
+that. There the shuffled gate lies between the sampled policy and the search, as plain mixing
+predicts. Do not claim that the gate raises success. Claim that it keeps success at a lower cost.
+
+Seed 0 has the full grid. The best gate is 1.0 to 2.0. At gate 0.5 the shuffled gate matches or
+beats the real gate (76.8 against 74.9 at depth 2, 75.5 against 70.2 at depth 0), so `r` separates
+rows only in its upper tail. At gate 4.0 the search covers 2 percent of the rows and the result
+returns to the sampled policy.
+
+### 21.2 2D, one seed
+
+| Arm | Searched rows | Depth 0 | Depth 2 |
+|---|---|---|---|
+| Mean action | 0 | 53.5 ± 0.7 | |
+| Sampled policy | 0 | 66.7 ± 1.1 | |
+| Search, no gate | 100% | 44.6 ± 1.3 | 45.1 ± 1.1 |
+| Gate 0.5, real and shuffled | 44% | 50.8 and 61.1 | 53.3 and 62.4 |
+| Gate 1.0, real and shuffled | 17% | 59.1 and 64.0 | 60.8 and 66.2 |
+| Gate 2.0, real and shuffled | 5% | 64.4 and 66.9 | 63.7 and 67.4 |
+| Gate 4.0 | 1% | 67.3 ± 1.5 | 66.6 ± 1.2 |
+
+The gate fails on 2D. Success rises only because the search runs less, and no gate beats the sampled
+policy. The shuffled gate beats the real gate at every threshold, so a high `r` marks the worst rows
+to search. This agrees with section 5: on 2D a large span is head error, and the argmax selects it.
+The same `r` has the opposite meaning on the two simulators. A gate on `r` is therefore safe only
+with a critic whose span is signal, which `scripts/critic_span.py` reports as a mean `r` above 1.
+
+### 21.3 The pessimistic score, alone and with the gate
+
+The score is the ensemble mean minus `lcb` ensemble standard deviations (`SearchConfig.lcb`). The
+gate computes `r` from the same score. Same protocol, `scripts/sweep.py --which lcb`, files
+`results/lcb.json` and `runs/mjlab/results/lcb.json`. The `lcb = 0` column is from section 21.1 and
+21.2. One training seed per simulator.
+
+Ungated search:
+
+| Simulator | Depth | lcb 0 | lcb 0.5 | lcb 1.0 | lcb 2.0 | Sampled policy |
+|---|---|---|---|---|---|---|
+| 2D | 0 | 44.6 ± 1.3 | 46.4 ± 1.9 | 51.3 ± 0.9 | 54.0 ± 1.4 | 66.7 ± 1.1 |
+| 2D | 2 | 45.1 ± 1.1 | 47.3 ± 1.0 | 49.0 ± 1.5 | 53.5 ± 1.4 | 66.7 ± 1.1 |
+| mjlab | 0 | 63.0 ± 1.1 | | 70.3 ± 0.5 | 75.3 ± 1.1 | 68.4 ± 1.2 |
+| mjlab | 2 | 71.3 ± 0.9 | | 73.7 ± 1.2 | 74.8 ± 0.9 | 68.4 ± 1.2 |
+
+- The pessimistic score helps on both simulators, and the curve still rises at `lcb = 2.0`. On 2D it
+  lifts the search by 9 points to the level of the mean action (53.5). The search still loses 13
+  points to the sampled policy.
+- On mjlab it lifts the depth 0 search by 12.3 points, from below the sampled policy to 6.9 above
+  it. Depth 0 makes no world model call, so this is the cheapest gain in this document.
+
+With the gate:
+
+| Simulator | lcb | Depth | Gate 1.0 | Gate 1.0, shuffled | Difference |
+|---|---|---|---|---|---|
+| mjlab | 1.0 | 2 | 78.5 ± 1.2 | 77.0 ± 1.3 | +1.4 |
+| mjlab | 2.0 | 0 | 77.7 ± 1.0 | 74.9 ± 1.1 | +2.7 |
+| mjlab | 2.0 | 2 | 79.2 ± 0.7 | 76.4 ± 0.8 | +2.9 |
+| 2D | 1.0 | 2 | 61.3 ± 1.5 | 65.0 ± 1.1 | -3.6 |
+| 2D | 2.0 | 2 | 61.2 ± 1.1 | 65.7 ± 0.9 | -4.5 |
+
+- The hypothesis of `next_steps.md` item 1b fails. On 2D the real gate loses to the shuffled gate in
+  17 of 18 cells, at every `lcb`. The pessimistic score does not turn `r` into a usable signal there.
+- On mjlab, `lcb = 2.0` with gate 1.0 at depth 2 gives 79.2, the best arm measured, 10.8 points above
+  the sampled policy. It is within one standard error of the gate alone (77.9), so the two methods
+  do not add.
+- On seed 0 they overlap. The real gate's margin over the shuffled gate falls from 4.3 points at
+  `lcb = 0` to 1.4 to 2.9 points. Section 21.4 shows that seeds 1 and 2 do not repeat this.
+
+### 21.4 The pessimistic score on three mjlab seeds, and a longer grid
+
+Files: `runs/mjlab_seed*/results/lcb.json`, `runs/mjlab/results/lcb_high.json`, and
+`results/lcb_high.json`. Ungated search on mjlab:
+
+| Depth | lcb | Seed 0 | Seed 1 | Seed 2 |
+|---|---|---|---|---|
+| 0 | 0 | 63.0 ± 1.1 | 80.3 ± 0.8 | 69.7 ± 1.3 |
+| 0 | 2.0 | 75.3 ± 1.1 | 80.9 ± 0.6 | 76.4 ± 0.8 |
+| 0 | 4.0 | 76.2 ± 0.9 | 78.6 ± 1.1 | 75.8 ± 1.0 |
+| 0 | 8.0 | 73.0 ± 1.3 | 72.7 ± 0.6 | 70.7 ± 1.5 |
+| 2 | 0 | 71.3 ± 0.9 | 81.1 ± 0.8 | 68.7 ± 1.1 |
+| 2 | 2.0 | 74.8 ± 0.9 | 80.9 ± 0.8 | 72.6 ± 2.0 |
+| 2 | 4.0 | 77.8 ± 1.1 | 81.1 ± 1.5 | 74.3 ± 0.7 |
+| 2 | 8.0 | 75.8 ± 1.0 | 74.5 ± 1.4 | 72.3 ± 0.6 |
+
+- The depth 0 gain of `lcb = 2.0` is +12.3, +0.6, and +6.7 points. It never costs success, and its
+  size tracks how weak the plain depth 0 search is on that seed. The 12.3 points of seed 0 are the
+  upper end, not the typical value.
+- The best value is 2.0 to 4.0. At 8.0 every seed falls by 3 to 8 points from its best cell.
+- With `lcb = 2.0`, depth 0 matches depth 2 on every seed (75.3 and 74.8, 80.9 and 80.9, 76.4 and
+  72.6) at half the step time, 31 against 63 ms. With the plain score depth 2 beat depth 0 on seed 0
+  only. The world model roll adds nothing once the root score is pessimistic. This bears on H1 and
+  H2: most of the measured depth gain on seed 0 was a repair of root ranking noise.
+- The gate keeps its selection on seeds 1 and 2. At `lcb = 2.0` and gate 1.0 the real gate beats the
+  shuffled gate by 8.2 and 5.6 points on seed 1 and by 5.1 and 6.1 points on seed 2 (depth 0 and
+  depth 2). The overlap of section 21.3 is a property of seed 0. The gated search stays within 3
+  points of the ungated search with 35 percent of the searches.
+
+On 2D the ungated search keeps rising: 58.2 at `lcb = 4.0` and 60.2 at 8.0 for depth 0, against 44.6
+with the plain score. It still loses 6 points to the sampled policy (66.7), and the real gate never
+beats the shuffled gate (-0.1 to -4.5 points).
+
+## 22. The n step critic target on 2D
+
+`RLPDConfig.n_step` sums the rewards of up to n recorded rows and bootstraps after the last one. The
+window stops at the end of the episode and at the newest row of the buffer. The target stays SARSA
+on the behavior data, and the world model keeps its one step target. Each run is 12,000 steps with
+`scripts/train.py --n-step`, then `scripts/sweep.py --which gate --gates 1.0` at lag 1, 256 envs, and
+6 batches. Runs: `runs/2d_nstep5`, `runs/2d_nstep20`, `runs/2d_nstep5_seed1`, `runs/2d_nstep5_seed2`.
+Seeds 1 and 2 use the offline data of `runs/2d_seed1` and `runs/2d_seed2`.
+
+| Arm | n = 1, seed 0 | n = 20, seed 0 | n = 5, seed 0 | n = 5, seed 1 | n = 5, seed 2 |
+|---|---|---|---|---|---|
+| Mean action | 53.5 ± 0.7 | 53.5 ± 1.4 | 56.2 ± 1.2 | 60.4 ± 1.0 | 56.2 ± 1.2 |
+| Sampled policy | 66.7 ± 1.1 | 68.4 ± 1.3 | 78.9 ± 1.2 | 75.1 ± 1.0 | 76.0 ± 0.7 |
+| Search depth 0 | 44.6 ± 1.3 | 62.2 ± 1.4 | 84.2 ± 0.5 | 79.2 ± 1.7 | 74.3 ± 1.2 |
+| Search depth 2 | 45.1 ± 1.1 | 65.6 ± 1.2 | 85.3 ± 1.1 | 81.1 ± 1.0 | 77.8 ± 0.9 |
+| Depth 2 minus sampled | -21.6 | -2.8 | +6.4 | +6.0 | +1.8 |
+
+- The n = 5 target repairs the 2D search on all three seeds. With the one step target the critic
+  argmax lost to the sampled policy on every seed (section 19). With n = 5 the depth 2 search beats
+  the sampled policy by 6.4, 6.0, and 1.8 points and the mean action by 21 to 29 points.
+- The policy improves as well. The sampled policy rises from 54 to 67 percent at n = 1 to 75 to 79
+  percent. The actor trains against the critic, so a critic that ranks actions helps both.
+- n = 20 is worse than n = 5. A long SARSA window carries the noise of the behavior policy.
+- Depth 2 beats depth 0 by 1.1 to 3.5 points on every seed. No single difference reaches 2 SE.
+- This removes the main split between the simulators. The 2D loss was a property of the one step
+  target under a sparse terminal reward, not of the quasi static task. Conclusion 1 of
+  `next_steps.md` stands, and the cause of the weak 2D critic now has a fix.
+
+The quantity `r` does not predict this. `scripts/critic_span.py` gives a mean `r` of 0.44 at n = 5 and
+0.76 at n = 20, against 0.66 at n = 1. At n = 5 only 2 to 9 percent of the rows reach `r = 1`, and the
+search gains on all of them together. The rule "r below 1 predicts a loss" is refuted. A likely
+reason: the denominator is the head spread of the Q level, and an offset that the heads do not
+share leaves the ranking intact. The head spread of the difference between two candidates is the
+noise that the argmax meets. This is not tested.
+
+The gate at 1.0 searches 2 to 9 percent of the rows at n = 5, so it removes the search and returns
+the sampled policy. The real gate and the shuffled gate agree within 1 SE in five of six cells. The
+gate has no use on these snapshots at this threshold.
+
+## 23. The H2 depth sweep with the pessimistic score, and the n step target on mjlab
+
+### 23.1 H2 at `lcb = 2.0` on mjlab
+
+`scripts/sweep.py --which h2 --lcb 2.0 --tag _lcb2`, 256 envs, 3 batches. Files:
+`runs/mjlab*/results/h2_lcb2.json`.
+
+| Seed | Lag | No search | Depth 0 | Depth 1 | Depth 2 | Depth 4 | Depth 6 |
+|---|---|---|---|---|---|---|---|
+| 0 | 0 | 38.4 ± 0.5 | 73.7 ± 2.3 | 75.3 ± 1.0 | 77.2 ± 2.3 | 75.5 ± 1.4 | 73.7 ± 1.2 |
+| 0 | 1 | 44.0 ± 1.4 | 73.4 ± 1.2 | 78.0 ± 1.8 | 76.8 ± 2.0 | 74.7 ± 1.9 | 74.9 ± 1.7 |
+| 0 | 2 | 43.5 ± 3.1 | 74.2 ± 0.8 | 74.3 ± 0.6 | 72.4 ± 2.4 | 72.1 ± 0.3 | 73.6 ± 0.9 |
+| 0 | 4 | 39.7 ± 1.3 | 67.3 ± 1.2 | 65.8 ± 0.3 | 64.6 ± 1.5 | 65.9 ± 0.5 | 68.2 ± 0.8 |
+| 1 | 0 | 27.6 ± 2.0 | 81.6 ± 2.0 | 83.6 ± 0.8 | 81.1 ± 0.8 | 80.3 ± 3.9 | 80.7 ± 1.7 |
+| 1 | 1 | 27.3 ± 2.4 | 82.6 ± 0.3 | 80.1 ± 0.8 | 82.3 ± 2.1 | 80.5 ± 0.8 | 80.6 ± 0.9 |
+| 1 | 2 | 31.1 ± 1.6 | 80.6 ± 0.6 | 79.7 ± 0.6 | 78.6 ± 1.2 | 76.8 ± 2.0 | 77.2 ± 1.7 |
+| 1 | 4 | 27.5 ± 1.8 | 75.7 ± 1.4 | 74.1 ± 1.4 | 73.2 ± 3.3 | 72.3 ± 1.0 | 69.9 ± 0.8 |
+| 2 | 0 | 23.2 ± 0.3 | 73.6 ± 0.8 | 70.2 ± 1.0 | 72.4 ± 0.5 | 70.3 ± 0.7 | 69.3 ± 1.7 |
+| 2 | 1 | 25.1 ± 0.9 | 73.3 ± 2.4 | 72.3 ± 2.4 | 71.7 ± 1.7 | 74.9 ± 1.1 | 74.3 ± 0.3 |
+| 2 | 2 | 24.6 ± 0.0 | 78.1 ± 1.6 | 71.9 ± 0.9 | 71.7 ± 2.1 | 70.6 ± 2.0 | 68.9 ± 1.2 |
+| 2 | 4 | 25.4 ± 0.6 | 72.9 ± 3.4 | 66.1 ± 0.3 | 68.5 ± 0.9 | 67.2 ± 1.6 | 67.7 ± 0.7 |
+
+- On the one step critic the pessimistic score removes most of the depth gain. With the plain score
+  the best depth beats depth 0 by 5 to 12 points on seed 0 (`h2.json`, 128 envs). With `lcb = 2.0` the
+  gap is 3.5, 4.6, 0.1, and 0.9 points at lags 0, 1, 2, and 4 on seed 0. On seed 1 no depth beats
+  depth 0 by more than 2.0 points, and depth 4 to 6 lose 3 to 6 points at lags 2 and 4. On seed 2
+  depth 0 is the best or tied cell at every lag, and every deeper cell loses 4 to 9 points at lags
+  2 and 4.
+- Depth 0 costs 38 ms per step and depth 6 costs 200 ms.
+- Staleness lowers every depth. Depth 0 loses 6 to 7 points from lag 0 to lag 4 on both seeds.
+
+### 23.2 `n_step = 5` on mjlab, seed 0
+
+`runs/mjlab_nstep5`, 24,000 steps, the offline data of `runs/mjlab`. Lag 1, 256 envs, 6 batches.
+
+| Arm | n = 1 | n = 5 |
+|---|---|---|
+| Mean action | 42.8 ± 1.4 | 30.7 ± 1.2 |
+| Sampled policy | 68.4 ± 1.2 | 70.7 ± 1.2 |
+| Search depth 0 | 63.0 ± 1.1 | 85.7 ± 0.4 |
+| Search depth 2 | 71.3 ± 0.9 | 89.7 ± 0.3 |
+| Depth 0, `lcb = 2.0` | 75.3 ± 1.1 | 86.6 ± 1.1 |
+| Depth 2, `lcb = 2.0` | 74.8 ± 0.9 | 90.5 ± 0.7 |
+| Depth 0, gate 1.0, real and shuffled | 75.9 and 74.5 | 85.7 and 80.3 |
+| Depth 2, gate 1.0, real and shuffled | 77.9 and 73.6 | 87.2 and 82.4 |
+
+- The n step target lifts the depth 2 search by 18.4 points, to 19 points above the sampled policy.
+- Depth 2 beats depth 0 by 4.0 points at standard errors of 0.3 and 0.4, and by 3.9 points with
+  `lcb = 2.0`. The depth gain returns once the critic ranks well. Section 23.1 therefore describes
+  the one step critic, not the search.
+- The pessimistic score adds about 1 point on this seed. Section 23.4 shows up to 16 points on seed 2.
+- The gate at depth 0 searches 11 percent of the rows and matches the full search.
+- The mean action falls by 12 points, and the training evaluation uses it. The training curve of
+  this run is therefore lower than the baseline (35 against 48 percent) while every search arm is
+  higher.
+- One seed. Open: seeds 1 and 2, and H2 to H4 on this snapshot.
+
+### 23.3 H2 on the `n_step = 5` snapshot, mjlab seed 0
+
+`runs/mjlab_nstep5/results/h2.json`, plain score, 256 envs, 3 batches.
+
+| Lag | No search | Depth 0 | Depth 1 | Depth 2 | Depth 4 | Depth 6 | Best depth minus depth 0 |
+|---|---|---|---|---|---|---|---|
+| 0 | 25.8 ± 3.9 | 81.4 ± 1.2 | 86.5 ± 1.5 | 87.9 ± 0.2 | 87.8 ± 0.3 | 86.2 ± 1.3 | +6.5 |
+| 1 | 32.4 ± 1.8 | 87.5 ± 0.2 | 89.3 ± 0.3 | 88.3 ± 0.6 | 90.1 ± 0.8 | 89.5 ± 1.0 | +2.6 |
+| 2 | 31.8 ± 0.9 | 88.5 ± 1.3 | 88.7 ± 1.0 | 90.5 ± 0.3 | 90.0 ± 0.5 | 88.4 ± 0.7 | +2.0 |
+| 4 | 32.2 ± 2.5 | 88.0 ± 0.7 | 88.3 ± 0.5 | 86.7 ± 1.0 | 85.3 ± 1.6 | 84.8 ± 1.2 | +0.3 |
+
+- This is the shape that H2 predicts, and it is the cleanest H2 table in this document. The gain of
+  depth over depth 0 falls with staleness: 6.5, 2.6, 2.0, and 0.3 points. At lag 4 the deep search
+  loses: depth 6 is 3.2 points below depth 0, at 2.3 SE.
+- The depth gain at lag 0 exceeds 5 SE. On the one step critic the same gain vanished under the
+  pessimistic score (section 23.1), so the world model roll earns its cost only with a critic that
+  ranks well.
+- Every search cell is between 81 and 91 percent, against 60 to 74 percent on the one step snapshot.
+- Depth 0 is lower at lag 0 than at lag 1. The agent trains at lag 1, so lag 0 is off distribution.
+- One seed. H2 on the n = 5 snapshots of seeds 1 and 2 is open.
+
+### 23.4 `n_step = 5` on three mjlab seeds
+
+Runs `runs/mjlab_nstep5`, `runs/mjlab_nstep5_seed1`, and `runs/mjlab_nstep5_seed2`, each with the
+offline data of its own seed. Lag 1, 256 envs, 6 batches. Each cell is n = 1, then n = 5.
+
+| Arm | Seed 0 | Seed 1 | Seed 2 |
+|---|---|---|---|
+| Mean action | 42.8, 30.7 | 27.7, 37.4 | 26.0, 29.4 |
+| Sampled policy | 68.4, 70.7 | 56.4, 73.0 | 54.3, 74.3 |
+| Search depth 0 | 63.0, 85.7 | 80.3, 73.3 | 69.7, 70.8 |
+| Search depth 2 | 71.3, 89.7 | 81.1, 80.2 | 68.7, 84.6 |
+| Depth 0, `lcb = 2.0` | 75.3, 86.6 | 80.9, 78.1 | 76.4, 87.0 |
+| Depth 2, `lcb = 2.0` | 74.8, 90.5 | 80.9, 83.5 | 72.6, 89.0 |
+
+The standard errors are 0.3 to 1.7 points.
+
+- The best arm is depth 2 with `lcb = 2.0` on the n = 5 critic: 90.5, 83.5, and 89.0 percent. The same
+  arm on the one step critic gives 74.8, 80.9, and 72.6. The n step target adds 15.7, 2.6, and 16.4
+  points. Seed 1 had the strongest one step critic and gains least.
+- The sampled policy improves on every seed, by 2.3, 16.6, and 20.0 points.
+- The plain search is not reliable on the n = 5 critic. Depth 0 with the plain score falls by 7.0
+  points on seed 1 and is flat on seed 2. The pessimistic score repairs it: it adds 0.9, 4.8, and
+  16.2 points at depth 0. Use `lcb = 2.0` as the standard score.
+- Depth 2 beats depth 0 on every n = 5 seed: by 4.0, 6.9, and 13.8 points with the plain score and by
+  3.9, 5.4, and 2.0 points with `lcb = 2.0`. On the one step critic with `lcb = 2.0` that gap was
+  -0.5, 0.0, and -3.8. The depth gain needs the n step critic.
+- The gate at 1.0 with the sample fallback searches 11 to 19 percent of the rows with the plain
+  score. It matches or beats the full plain search on every seed (85.7, 81.4, 83.1 at depth 0). It
+  beats the shuffled gate on seeds 0 and 1 (+5.4 and +1.1 at depth 0, +4.8 and +5.4 at depth 2) and
+  ties on seed 2 (-0.6 and +2.8). With `lcb = 2.0` the gated search stays within 2 points of the
+  full search at about 30 percent of the searches.
+
 ## 11. Conclusions
 
 1. **Test time search helps a decentralized heterogeneous team on the contact physics task and
@@ -859,9 +1139,8 @@ artefact. One seed, evaluated without retraining.
    the mjlab gain is seed dependent: in one seed the rollout (a random world model costs 11
    points, the critic argmax adds nothing), in two seeds the critic argmax (the rollout adds
    nothing over it). The critic's action span is not the mediator (section 14.6), and neither is
-   momentum (section 18). What separates the simulators is not settled; the remaining
-   candidates are the contact model (pushing by collision under a force limit against a gated
-   normal force) and the servo dynamics of the mjlab robots.
+   momentum (section 18). Conclusion 7 settles what separates the simulators: the one step
+   critic target, not the physics.
 
 2. **Stale teammate information degrades the search in the direction H2 and H3 predicted, in both
    simulators.** On mjlab the mean gain over the sampled policy falls from +19.8 at lag 0 to −0.3
@@ -892,7 +1171,38 @@ artefact. One seed, evaluated without retraining.
    checkpoint selection) is recorded in `design.md` and `math.md`, and it carried over to mjlab
    without change.
 
+7. **The one step critic target was the main limit on the search, in both simulators.** A target
+   that sums five recorded rewards before the bootstrap (`n_step = 5`) repairs the 2D search on
+   three seeds: depth 2 beats the sampled policy by 6.4, 6.0, and 1.8 points, where the one step
+   critic lost by up to 22 (section 22). On mjlab the best arm, depth 2 with a pessimistic score
+   on the n = 5 critic, reaches 90.5, 83.5, and 89.0 percent on three seeds, 2.6 to 16.4 points
+   above the same arm on the one step critic (section 23.4). Conclusion 1 therefore describes the
+   one step critic. The statement "search hurts on the quasi static task" does not hold for the
+   n = 5 critic.
+
+8. **A pessimistic score is the cheapest repair of the search, and it changes what depth means.**
+   The score is the ensemble mean minus two ensemble standard deviations. On the one step mjlab
+   critic it adds 0.6 to 12.3 points at depth 0 and never costs success, and with it depth adds
+   little or nothing on three seeds (sections 21.4 and 23.1). Most of the depth gain measured on
+   the one step critic was a repair of root ranking noise. On the n = 5 critic the depth gain is
+   real: depth 2 beats depth 0 by 2.0 to 5.4 points with the pessimistic score on three seeds,
+   and on seed 0 the gain falls with staleness as H2 predicts, 6.5, 2.6, 2.0, and 0.3 points at
+   lags 0, 1, 2, and 4 (section 23.3).
+
+9. **A gate on the critic's own signal saves compute and does not raise success.** A row searches
+   only when the span of Q over its candidates reaches the ensemble spread. On mjlab the gated
+   search keeps the success of the full search with 11 to 35 percent of the searches, and its
+   selection beats a shuffled gate by 4 to 10 points on the one step critic of three seeds
+   (section 21). It fails on the one step 2D critic, where a large span is head error. The ratio
+   behind the gate does not predict whether search helps (section 22).
+
 ## 12. Limitations
+
+- Sections 21 to 23 use lag 1 unless a table states the lag. H2 on the n = 5 critic is one seed,
+  and H3, H4, robustness, and transfer are not run on it. The gate threshold and the pessimism
+  weight were chosen on seed 0 of each simulator and then applied to the other seeds.
+- The n = 5 runs change the critic and the policy together, because the actor trains against the
+  critic. The mean action falls on mjlab seed 0 (42.8 to 30.7) while the sampled policy rises.
 
 - One training seed for the snapshot and one for each baseline. Cell to cell comparisons within a
   sweep are paired on the same snapshot and the same first episodes, so they are the reliable part.

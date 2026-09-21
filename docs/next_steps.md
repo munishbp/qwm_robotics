@@ -293,7 +293,29 @@ minutes. The training curve is free, because it rides every run below.
 random score control loses the whole 24.5 points on mjlab. Refutes if the mjlab control keeps most of
 the gain, which would put the gain in the candidate machinery and not in the ranking.
 
-#### 2. Score candidates pessimistically instead of by the ensemble mean
+#### 1b. Gate the search on r (done, `docs/results.md` section 21)
+
+**Hypothesis.** A gate on r recovers the 2D loss, keeps the mjlab gain, and cuts the search compute.
+
+**Result.** Confirmed on mjlab on three seeds: gate 1.0 keeps the success of the full search with 24
+percent of the searches and 37 percent less step time, and it beats the shuffled gate by 4 to 8
+points. Refuted on 2D: the shuffled gate beats the real gate at every threshold.
+
+**What follows.**
+
+- Item 2 with the gate is done (`docs/results.md` section 21.3). The pessimistic score helps the
+  ungated search on both simulators, but the real gate still loses to the shuffled gate on 2D. The
+  2D critic has no usable ranking signal, so the burden falls on item 4.
+- The longer grid and the two other seeds are done (section 21.4). The best `lcb` is 2.0 to 4.0. With
+  it, depth 0 matches depth 2 on all three mjlab seeds. Rerun the H2 depth sweep at `lcb = 2.0`
+  before any claim about depth: `scripts/sweep.py --which h2` needs an `lcb` argument for that.
+- Replace the fixed threshold by a quantile of r per step. The searched share then stays constant
+  across snapshots, which makes a compute matched comparison direct.
+- Test the gate under lag 2 and lag 4. A stale table can inflate the span without a better ranking.
+- A learned gate is justified only after these three. It needs a target, and the sign of the real
+  gate minus the shuffled gate shows that r already carries most of the signal on mjlab.
+
+#### 2. Score candidates pessimistically instead of by the ensemble mean (done, `docs/results.md` section 21.3)
 
 **Hypothesis.** The argmax over 9 noisy heads selects the candidate with the largest head error. The
 2D evidence is direct: the argmax picks the candidate farthest from the policy mean, 0.34 against
@@ -330,7 +352,20 @@ sampled policy by more than 7 points at 2 SE. A temperature above 1 that adds po
 spread is too narrow. Refutes if success is flat or falls with the candidate count, which is the
 winner's curse and caps what any candidate change can buy.
 
-#### 4. Train the 2D critic with n step or Monte Carlo SARSA targets
+#### 4. Train the 2D critic with n step or Monte Carlo SARSA targets (done, `docs/results.md` section 22)
+
+**Result.** Confirmed on success and refuted on r. With n = 5 the depth 2 search beats the sampled
+policy on three 2D seeds (+6.4, +6.0, +1.8 points). n = 20 is worse than n = 5. The mean r stays below
+1, so r in its current form does not predict the gain. What follows: run n = 5 on mjlab (66 plus 20
+minutes), try n in {3, 10}, rerun H2 to H4 on the n = 5 snapshot, and replace the denominator of r by
+the head spread of the candidate difference.
+
+**mjlab (section 23).** n = 5 with depth 2 and `lcb = 2.0` gives 90.5, 83.5, and 89.0 percent on three
+seeds, 2.6 to 16.4 points above the one step critic. H2 on the seed 0 snapshot has the predicted
+shape. Open: H2 on the n = 5 snapshots of seeds 1 and 2, H3 and H4 on all three, n in {3, 10}, and
+the decision to make n = 5 and `lcb = 2.0` the defaults.
+
+The original plan follows.
 
 **Hypothesis.** The 2D flatness is a credit assignment artifact of the one step target. Under a
 sparse terminal reward a one step target teaches the state dependence first and the action dependence

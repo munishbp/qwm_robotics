@@ -257,6 +257,19 @@ collects 256 transitions at once. Equation (20) is the comparable quantity, and 
 as the critic. The design fixes Adam with learning rate $3 \times 10^{-4}$ for every module, $B = 256$ rows per update, and
 the Polyak rate $\rho = 0.005$ of equation (12b), which moves the target critic and the target representation together.
 
+### 4.1 The n step target
+
+$$y^{(n)}_t = \sum_{m=0}^{j} \gamma^m r_{t+m} + \gamma^{j+1}\,(1 - d_{t+j})\,\bar Q_{\text{target}}(b_{t+j+1}, a_{t+j+1}), \qquad j = \min(n-1,\; T_{\text{ep}} - t,\; t_{\text{new}} - t) \tag{51}$$
+
+`RLPDConfig.n_step` sets $n$. The window holds recorded rows only, so the target stays a SARSA target on the behavior data and
+the argument of section 3 for that choice is unchanged. $T_{\text{ep}}$ is the last row of the episode and $t_{\text{new}}$ is the
+newest row of the buffer, so a window never crosses an episode and never reads an unwritten row. $d_{t+j}$ is the terminated
+flag of the last row. The clamp of equation (12) still applies. With $n = 1$ equation (51) is the one step target. The world
+model keeps its one step target. Under one terminal reward a one step target moves the outcome back one row per backup, and
+the action dependence of $Q$ arrives last. With $n = 5$ the outcome reaches the action in a fifth of the backups. `results.md`
+section 22 measures the effect: the 2D search turns from a loss of 22 points into a gain of 6. $n = 20$ is worse than $n = 5$,
+because the window then sums the noise of the behavior policy over 20 actions.
+
 ## 5. Latent world model
 
 $$f_\psi(z, a_{\text{self}}, c) = z + g_\psi(z, a_{\text{self}}, c), \qquad c_i = \frac{1}{|\mathcal{N}_i|}\sum_{j \in \mathcal{N}_i} h_\psi(\tau_j, a_j) \tag{21}$$
@@ -481,6 +494,23 @@ limitation multiplied by $K$. Because every candidate is rolled, one joint searc
 $K$ independent searches up to the $+1$ and $+K$ terms, and the ratio is independent of depth. With $K=6, N=8, J=4$ it is
 $49/54 = 0.907$ at every depth, and at $D = 2$ the counts are $36 \times 45 = 1620$ model calls per environment per step
 against $6 \times 245 = 1470$; report measured wall clock too, because equation (32) counts calls and not kernel launches.
+
+### 9.4 The pessimistic score and the gate
+
+$$\tilde Q(b, a) = \operatorname{mean}_m Q_m(b, a) - \lambda\,\operatorname{std}_m Q_m(b, a) \tag{52}$$
+
+`SearchConfig.lcb` sets $\lambda$, and $\lambda = 0$ is the plain score. The argmax over $N + 1$ candidates of a noisy mean selects
+the candidate with the largest positive head error. The bound subtracts the quantity that this selection rewards. The measured
+best value is $\lambda = 2$ to $4$; at $\lambda = 8$ every seed loses 3 to 8 points (`results.md` section 21.4).
+
+$$r(b_i) = \frac{\max_c \tilde Q(b_i, a_c) - \min_c \tilde Q(b_i, a_c)}{\operatorname{std}_m Q_m(b_i, \mu(b_i))}, \qquad \text{robot } i \text{ searches iff } r(b_i) \ge g \tag{53}$$
+
+`SearchConfig.gate` sets $g$. A row below the gate acts with one policy sample and makes no world model call, so the cost of
+equation (31) scales with the searched share. The shuffled control permutes $r$ across rows. It keeps the searched share and
+removes the selection. The denominator is the head spread of the level of $Q$. An offset that differs across heads and is
+constant across candidates enters the denominator and leaves the ranking intact, which is the likely reason that the mean of
+$r$ does not predict whether search helps (`results.md` section 22). The spread of $Q_m(b, a_c) - Q_m(b, \mu(b))$ over heads
+is the noise that the argmax meets. That variant is not tested.
 
 ## 10. The two error sources in the tree
 

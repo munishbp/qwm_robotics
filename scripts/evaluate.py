@@ -40,6 +40,10 @@ def main() -> None:
     p.add_argument("--no-messages", action="store_true", help="ablation: self only beliefs")
     p.add_argument("--no-roll", action="store_true", help="ablation: stale messages used without forward correction")
     p.add_argument("--scorer", choices=["q", "decoded", "random"], default="q", help="search node score")
+    p.add_argument("--gate", type=float, default=0.0, help="search only where r is at or above this value; 0 disables")
+    p.add_argument("--gate-fallback", choices=["sample", "mean"], default="sample", help="action of a gated row")
+    p.add_argument("--gate-shuffle", action="store_true", help="control: permute r across rows")
+    p.add_argument("--lcb", type=float, default=0.0, help="score is the ensemble mean minus this many std")
     p.add_argument("--wm", choices=["trained", "random"], default="trained", help="control: random world model")
     p.add_argument("--out", default="")
     args = p.parse_args()
@@ -52,7 +56,9 @@ def main() -> None:
 
         agent.nets.wm = WorldModel().to(dev)
     if args.depth >= 0:
-        policy, scfg = "search", SearchConfig(args.depth, args.candidates, args.beam, args.beta, args.mode, args.scorer)
+        policy, scfg = "search", SearchConfig(
+            args.depth, args.candidates, args.beam, args.beta, args.mode, args.scorer,
+            args.gate, args.gate_fallback, args.gate_shuffle, args.lcb)
     else:
         policy, scfg = args.policy, None
     res = evaluate(agent, lambda s: make_env(args.envs, s, False, args.team, dev), belief_cfg, policy, scfg,

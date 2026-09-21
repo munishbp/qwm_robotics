@@ -1,0 +1,35 @@
+{
+  "args": {
+    "obs": "belief",
+    "envs": 256,
+    "steps": 24000,
+    "utd": 4,
+    "lag": 1,
+    "offline": "/home/munish-persaud/robot/runs/mjlab_seed2/data/offline.pt",
+    "no_offline": false,
+    "collect_depth": -1,
+    "n_step": 5,
+    "eval_every": 500,
+    "eval_envs": 128,
+    "seed": 2,
+    "out": "belief",
+    "smoke": false
+  },
+  "last": {
+    "step": 24000,
+    "transitions": 6144000,
+    "train_success": 0.7648494711147275,
+    "eval_success": 0.28125,
+    "eval_length": 78.21678321678323,
+    "wall_min": 77.23986023664474,
+    "critic_loss": 0.006443222519010305,
+    "actor_loss": -0.49027007818222046,
+    "alpha": 0.000176338100573048,
+    "wm_loss": 0.008116221986711025,
+    "dec_loss": 0.005307659972459078,
+    "q_mean": 0.48685112595558167,
+    "entropy": -2.555650234222412,
+    "bc_loss": 0.04594003036618233,
+    "dec_b_loss": 0.0003166911192238331
+  }
+}

@@ -6,6 +6,12 @@ and runs a short tree search over a learned world model at decision time. The qu
 test time search still helps when the robot must imagine what its teammates do from information
 that is already a frame old.
 
+The current answer, from `docs/results.md` sections 21 to 23: yes, with a critic that can rank
+actions. A five step critic target and a pessimistic search score lift the depth 2 search to 84 to
+91 percent on three mjlab seeds, against 54 to 74 percent for the sampled policy. The depth gain
+falls with staleness as H2 predicts. A gate on the critic's own signal keeps that success with 11
+to 35 percent of the searches.
+
 The full proposal, hypotheses, method, baselines, and schedule are in
 [proposal_shared_latent_swarm_transport.md](proposal_shared_latent_swarm_transport.md).
 
@@ -54,6 +60,14 @@ The same pipeline on mjlab (MuJoCo Warp), which needs the optional dependency:
 uv pip install --python .venv/bin/python -e ".[mjlab]"
 .venv/bin/python -m pytest tests/test_env_mjlab.py -q
 SWARM_SIM=mjlab RUN_DIR=$PWD/runs/mjlab bash scripts/run_all.sh 24000
+```
+
+The settings of sections 21 to 23 are flags, and the defaults reproduce the earlier sections:
+
+```
+.venv/bin/python scripts/train.py --obs belief --n-step 5 --out belief      # five step critic target
+.venv/bin/python scripts/evaluate.py --depth 2 --lcb 2.0 --gate 1.0          # pessimistic score and gate
+.venv/bin/python scripts/sweep.py --which gate lcb --envs 256 --batches 6    # the grids with their controls
 ```
 
 Every step of `run_all.sh` skips when its output exists, so a rerun resumes. Results land in

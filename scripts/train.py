@@ -35,6 +35,7 @@ def main() -> None:
     p.add_argument("--offline", default="data/offline.pt")
     p.add_argument("--no-offline", action="store_true")
     p.add_argument("--collect-depth", type=int, default=-1, help="search depth during collection, -1 for none")
+    p.add_argument("--n-step", type=int, default=1, help="rows in the critic return window")
     p.add_argument("--eval-every", type=int, default=500)
     p.add_argument("--eval-envs", type=int, default=128)
     p.add_argument("--seed", type=int, default=0)
@@ -51,7 +52,7 @@ def main() -> None:
     # The full observation is stored only for the centralized run. The ring holds at most 4096
     # rows per env, about one million transitions at 256 envs, as the design states.
     fd = full_dim(env.num_robots) if args.obs == "full" else 0
-    cfg = RLPDConfig(utd=args.utd, obs_mode=args.obs, full_dim=fd)
+    cfg = RLPDConfig(utd=args.utd, obs_mode=args.obs, full_dim=fd, n_step=args.n_step)
     agent = Agent(types, cfg, dev)
     online = Buffer(env.num_envs, min(args.steps + 1, 4096), types, dev, fd)
     offline = None if args.no_offline else Buffer.load(args.offline, dev)

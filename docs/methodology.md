@@ -107,6 +107,17 @@ the GPU for 15 minutes after a training run:
 | `scripts/day3.sh` | Mechanism controls on the extra seeds, the staleness curve at lags 2 and 8 (`scripts/lag_curve.py`), search during collection, the momentum 2D variant, two more 2D seeds with H2, H2 on the extra mjlab seeds | 16 to 19 |
 | `scripts/day4.sh` | The fair H1 arms rerun on the three mjlab seeds with per episode outcomes for the paired bootstrap | 16 |
 
+**The programs of sections 21 to 23.** No driver script. Each results section states its command.
+The gate and the pessimistic score are test time settings on existing snapshots:
+`scripts/sweep.py --which gate` and `--which lcb`, at lag 1, 256 envs, and 6 batches, which is the
+margin protocol of `next_steps.md`. Each grid has the two no search baselines (mean action and
+sampled policy), the ungated search, and the shuffled gate as the control. `--lcb` sets the
+pessimistic score for every other sweep group, and `--tag` names a second output file. The H2
+sweeps of section 23 use 256 envs and 3 batches. The n step runs are `scripts/train.py --n-step 5`
+in a new run directory with the offline data of the matching one step seed, so the target is the
+only change. The threshold `gate = 1.0` and the weight `lcb = 2.0` were chosen on seed 0 and then
+applied to seeds 1 and 2 without a new search.
+
 **The fair H1 arms.** Four arms on the same env seeds: the sampled policy (the policy with its
 exploration noise), a random root candidate, depth 0 (critic argmax over nine candidates), and
 depth 6 search with beta 0.9. 256 envs and 5 batches per cell, env seeds 1000 to 1004, so every
